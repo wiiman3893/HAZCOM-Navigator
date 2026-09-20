@@ -13,3 +13,10 @@ apps/windows/src-tauri/target/
 apps/mobile/android/
 apps/mobile/ios/
 .firebase/
+
+# Firebase generated output and private operator credentials
+firebase/functions/lib/
+*service-account*.json
+*serviceAccount*.json
+application_default_credentials.json
+*.tsbuildinfo

@@ -1,12 +1,7 @@
 {
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
-  "storage": {
-    "rules": "storage.rules"
-  },
-  "functions": {
-    "source": "functions"
-  }
+  "firestore": {"database":"(default)","location":"us-central1","rules":"firestore.rules","indexes":"firestore.indexes.json","predeploy":["node scripts/assert-dev.cjs"]},
+  "storage": {"rules":"storage.rules","predeploy":["node scripts/assert-dev.cjs"]},
+  "functions": {"source":"functions","runtime":"nodejs22","predeploy":["node scripts/assert-dev.cjs","npm --prefix functions run build"],"ignore":["node_modules",".git","test","*.log","scripts"]},
+  "auth": {"authorizedDomains":["localhost","hazcom-navigator-dev.firebaseapp.com","hazcom-navigator-dev.web.app"],"providers":{"anonymous":false,"emailPassword":false,"googleSignIn":{"oAuthBrandDisplayName":"HazCom Navigator Dev","supportEmail":"wiiman3893@gmail.com"}}},
+  "emulators": {"auth":{"port":9099},"firestore":{"port":8080},"storage":{"port":9199},"functions":{"port":5001},"ui":{"enabled":false},"singleProjectMode":true}
 }
