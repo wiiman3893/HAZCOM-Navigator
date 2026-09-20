@@ -6,7 +6,7 @@ The Constellation architecture is a reasonable fit and was retained without subs
 
 ## Repository destination
 
-The requested destination is `SaturnStraw/HAZCOM-Navigator`. At implementation time that repository did not resolve through the connected GitHub integration, and the available GitHub integration did not expose repository creation. The complete initial source tree was therefore generated locally rather than silently writing to a different repository.
+The Constellation artifact originally named `SaturnStraw/HAZCOM-Navigator` as the implementation target. The repository actually created and explicitly approved by the project owner is `wiiman3893/HAZCOM-Navigator`, so this repository is the active implementation destination. The original Constellation artifact is retained unchanged under `docs/constellation/` for traceability.
 
 ## Source fidelity
 
