@@ -1,48 +1,50 @@
+// CODEX HANDOFF (2026-09-20): This ruleset was compiled, emulator-tested, and deployed to hazcom-navigator-dev.
+// All client writes are intentionally denied; trusted mutations go through callable Functions. Do not loosen this to make UI work.
 rules_version = '2';
+// Backend-owned schema (see README): accounts/{uid}, subscriptions/{uid};
+// companies/{companyId} has active:bool/currentRevisionId:string|null/currentRevisionNumber:int.
+// memberships/{uid}: uid, companyId, role, active:bool, workerId:string|null.
+// coverage/current: accountId. Subscription status/plan/validUntil/graceUntil are server-owned.
+// publishedRevisions/{id}: status, revisionNumber, immutable dataset collections and attachments.
+// All mutations, validation and role assignment run through trusted Functions; client writes denied.
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function membership(companyId) {
-      return get(/databases/$(database)/documents/companies/$(companyId)/memberships/$(request.auth.uid));
-    }
+    function signedIn() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function own(uid) { return signedIn() && request.auth.uid == uid; }
+    function member(companyId) { return get(/databases/$(database)/documents/companies/$(companyId)/memberships/$(request.auth.uid)).data; }
     function hasMembership(companyId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/companies/$(companyId)/memberships/$(request.auth.uid))
-        && membership(companyId).data.active == true;
+      return signedIn() && get(/databases/$(database)/documents/companies/$(companyId)).data.active == true
+        && member(companyId).active == true && member(companyId).role in ['administrator','manager','member'];
     }
-    function isManager(companyId) { return hasMembership(companyId) && membership(companyId).data.role in ['manager','administrator']; }
-    function isAdmin(companyId) { return hasMembership(companyId) && membership(companyId).data.role == 'administrator'; }
+    function manager(companyId) { return hasMembership(companyId) && member(companyId).role in ['administrator','manager']; }
+    function admin(companyId) { return hasMembership(companyId) && member(companyId).role == 'administrator'; }
+    // Loss of payment blocks new operations, not retained hazard/SDS read/export access.
+    // Membership revocation is the boundary that removes distributed read access.
+    function readable(companyId) { return hasMembership(companyId); }
+    function published(companyId, revisionId) { return readable(companyId) && get(/databases/$(database)/documents/companies/$(companyId)/publishedRevisions/$(revisionId)).data.status == 'published'; }
+    function personal(companyId, workerId) { return manager(companyId) || (hasMembership(companyId) && member(companyId).workerId != null && member(companyId).workerId == workerId); }
 
+    match /accounts/{uid} {
+      allow read: if own(uid);
+      match /memberships/{companyId} { allow read: if own(uid); }
+    }
+    match /subscriptions/{uid} { allow read: if own(uid); }
     match /companies/{companyId} {
       allow read: if hasMembership(companyId);
-      allow create: if false; // provisioned through entitled backend flow
-      allow update: if isAdmin(companyId);
-      allow delete: if false;
-
-      match /memberships/{uid} {
-        allow read: if hasMembership(companyId) && (request.auth.uid == uid || isAdmin(companyId));
-        allow write: if false; // account/membership administration goes through backend authority
-      }
-
+      match /memberships/{uid} { allow read: if hasMembership(companyId) && (own(uid) || admin(companyId)); }
+      match /coverage/{coverageId} { allow read: if hasMembership(companyId) && coverageId == 'current'; }
       match /publishedRevisions/{revisionId} {
-        allow read: if hasMembership(companyId);
-        allow write: if false; // immutable revision publication goes through backend authority
-
-        match /{document=**} {
-          allow read: if hasMembership(companyId);
-          allow write: if false;
+        allow read: if readable(companyId) && (resource.data.status == 'published' || (manager(companyId) && resource.data.createdByAccountId == request.auth.uid));
+        match /{kind}/{recordId} {
+          allow read: if published(companyId,revisionId) && kind in ['workAreas','chemicalProducts','workAreaProducts','sdsVerifications','hazcomReviews'];
         }
+        match /workers/{workerId} { allow read: if published(companyId,revisionId) && personal(companyId,workerId); }
+        match /workAreaAssignments/{assignmentId} { allow read: if published(companyId,revisionId) && personal(companyId,resource.data.workerId); }
+        match /trainingEvents/{eventId} { allow read: if published(companyId,revisionId) && personal(companyId,resource.data.workerId); }
+        match /attachments/{attachmentId} { allow read: if published(companyId,revisionId) && resource.data.published == true; }
       }
-
-      match /trainingEvents/{eventId} {
-        allow read: if hasMembership(companyId);
-        allow write: if false; // Members use recordTrainingCompletion callable; events are append-only.
-      }
-
-      match /{document=**} {
-        allow read: if hasMembership(companyId);
-        allow write: if false;
-      }
+      match /trainingEvents/{eventId} { allow read: if readable(companyId) && personal(companyId,resource.data.workerId); }
     }
+    match /{document=**} { allow write: if false; }
   }
 }

@@ -1,4 +1,6 @@
 {
-  "indexes": [],
+  "indexes": [
+    { "collectionGroup":"trainingEvents", "queryScope":"COLLECTION", "fields":[{"fieldPath":"workerId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"ASCENDING"}] }
+  ],
   "fieldOverrides": []
 }

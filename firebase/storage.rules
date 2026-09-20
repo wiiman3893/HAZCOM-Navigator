@@ -1,22 +1,21 @@
+// CODEX HANDOFF (2026-09-20): Emulator-tested SDS rules. Cloud deployment is pending Blaze + creation of the default us-central1 Storage bucket.
+// Clients get authenticated reads only after membership + published attachment checks; all client writes remain denied.
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    function hasMembership(companyId) {
-      return request.auth != null
-        && firestore.get(
-          /databases/(default)/documents/companies/$(companyId)/memberships/$(request.auth.uid)
-        ).data.active == true;
+    function allowed(companyId,revisionId,attachmentId,digest) {
+      let member = firestore.get(/databases/(default)/documents/companies/$(companyId)/memberships/$(request.auth.uid)).data;
+      let attachment = firestore.get(/databases/(default)/documents/companies/$(companyId)/publishedRevisions/$(revisionId)/attachments/$(attachmentId)).data;
+      // Storage permits at most two Firestore document lookups. published is set only
+      // in the atomic revision-finalization transaction. Membership removal revokes access.
+      return member.active == true && member.role in ['administrator','manager','member']
+        && attachment.published == true && digest == attachment.sha256 + '.pdf';
     }
-
-    match /companies/{companyId}/revisions/{revisionId}/{allPaths=**} {
-      // Published SDS/revision files are readable only by an active Company member.
-      // Revision uploads remain server-authoritative and are never client-writable.
-      allow read: if hasMembership(companyId);
-      allow write: if false;
+    match /companies/{companyId}/revisions/{revisionId}/sds/{attachmentId}/{digest} {
+      allow get: if request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous' && allowed(companyId,revisionId,attachmentId,digest);
+      // Includes Manager/Admin: uploads must pass trusted Function role and entitlement checks.
+      allow list, write: if false;
     }
-
-    match /{allPaths=**} {
-      allow read, write: if false;
-    }
+    match /{allPaths=**} { allow read, write: if false; }
   }
 }

@@ -14,9 +14,15 @@
     "dev:mobile": "npm run dev -w @hazcom/mobile",
     "build": "npm run build:core && npm run build -w @hazcom/windows && npm run build -w @hazcom/mobile",
     "test": "npm run test:core && npm run test:sqlite",
-    "test:sqlite": "node scripts/validate-sqlite.mjs"
+    "test:sqlite": "node scripts/validate-sqlite.mjs",
+    "test:firebase": "cd firebase && npx -y firebase-tools@latest emulators:exec --project demo-hazcom-navigator --only auth,firestore,storage \"npm --prefix functions test\"",
+    "firebase:signin": "vite --config firebase/dev-vite.config.ts",
+    "firebase:deploy": "cd firebase && npx -y firebase-tools@latest deploy --project hazcom-navigator-dev",
+    "firebase:deploy:firestore": "cd firebase && npx -y firebase-tools@latest deploy --only firestore --project hazcom-navigator-dev"
   },
   "devDependencies": {
-    "typescript": "7.0.2"
+    "firebase": "12.19.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
   }
 }
