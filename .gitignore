@@ -20,3 +20,11 @@ firebase/functions/lib/
 *serviceAccount*.json
 application_default_credentials.json
 *.tsbuildinfo
+
+# Local development/reference artifacts
+Evidence/
+Hazcom Navigator - Constellation Export/
+*.ssproject
+
+# Generated Tauri metadata
+apps/windows/src-tauri/gen/
