@@ -1,3 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-export default defineConfig({ plugins:[react()], clearScreen:false, server:{ port:1420, strictPort:true } });
+
+export default defineConfig({
+  plugins: [react()],
+  clearScreen: false,
+  server: {
+    port: 1420,
+    strictPort: true,
+    watch: {
+      // Cargo writes and locks files under src-tauri/target while Tauri builds.
+      // Vite only needs to watch the frontend source tree; watching Rust build
+      // output on Windows can fail with EBUSY when Cargo has an object file open.
+      ignored: ['**/src-tauri/target/**'],
+    },
+  },
+});
