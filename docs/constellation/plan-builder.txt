@@ -1,0 +1,35 @@
+PLAN BUILDER / COMMERCIAL ENTITLEMENTS
+- Commercial mode: paid; purchaser may be: account.
+- Account identity is generic. Purchaser profiles describe how someone buys/uses the product; they are not Account types or security roles.
+- Plan = bundle purchased. Charge = how money is collected. Entitlement = what the purchase unlocks. Usage Meter = measured commercial unit. Membership/Role = authorization inside an Organization.
+- Never infer authorization from payer/coverage, and never infer billing responsibility from a Membership role.
+- Runtime purchases/subscriptions are entitlement instances. Persist entitlement ownership and Organization coverage assignments separately from the reusable Plan definitions so coverage can transfer without moving domain data.
+- Purchaser profiles: Customer: Purchases access to create and operate an Organization in this product.
+
+PLAN: Customer Plan [primary]
+- Purpose: Plan intended to end users with a single company role.
+- Intended purchaser profiles: Customer
+- Charge: Subscription; type=recurring; billing choice=ONE of the following options (not additive):
+  - Monthly: USD 10 / monthly
+  - Annual: USD 100 / annual
+- Organization coverage: mayCreate=true; max=1; autoCoverCreated=true; transferAllowed=true; preserveMembershipsOnTransfer=true.
+- Initial Membership role on Organization creation: Administrator.
+- Entitled features/services: Active HazCom Navigator paid entitlement
+- Lifecycle/access: trialDays=0; graceDays=14; expiration=export-only.
+- Post-expiration retention: structuredDataDays=not specified; managedFilesDays=not specified; backupDays=14; finalBehavior=custom (Delete subscription backup copies after 14 days of non-payment. Do not infer deletion of canonical Company data or managed SDS files from backup deletion; their authoritative retention requires a separate explicit policy.). Access restrictions and data retention are separate policies.
+
+PLAN: Professional Plan [primary]
+- Purpose: This plan allows for professional safety staff who provide services to several companies the ability to purchase access.
+- Intended purchaser profiles: not restricted
+- Charge: Subscription; type=recurring; billing choice=ONE of the following options (not additive):
+  - Monthly: USD 25 / monthly
+  - Annual: USD 250 / annual
+- Organization coverage: mayCreate=true; max=unlimited; autoCoverCreated=true; transferAllowed=true; preserveMembershipsOnTransfer=true.
+- Initial Membership role on Organization creation: HAZCOM Manager.
+- Entitled features/services: Active HazCom Navigator paid entitlement
+- Lifecycle/access: trialDays=0; graceDays=14; expiration=export-only.
+- Post-expiration retention: structuredDataDays=not specified; managedFilesDays=not specified; backupDays=14; finalBehavior=custom (Delete subscription backup copies after 14 days of non-payment. Do not delete a client Company's canonical program merely because a Professional payer stops covering it; coverage may transfer independently of Company data and Memberships.). Access restrictions and data retention are separate policies.
+
+COMMERCIAL / AUTHORIZATION BOUNDARY
+- Organization coverage may transfer between plans or payers without moving the Organization data. Preserve Memberships unless the plan explicitly says otherwise.
+- A person may hold a plan entitlement while belonging to zero Organizations; Organization Memberships are created only when needed for authorization.

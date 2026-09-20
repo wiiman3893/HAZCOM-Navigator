@@ -1,0 +1,44 @@
+CLIENT / PLATFORM ARCHITECTURE
+- The canonical domain model is shared. Client availability does not duplicate or redefine domain entities.
+- Authorization answers who is allowed to perform an action. Client capability answers whether this client exposes that action. Both must permit an operation.
+- Client/UI availability is never a security boundary; authoritative services and data-access rules must still enforce authorization.
+
+CLIENTS
+- Android [Android]: responsibility=consumption; localDataRole=published-replica; offline=yes
+  Local persistence: SQLite + application-managed SDS files
+  Capabilities/workflows: Search, browse Company work areas, emphasize assigned work areas, view SDS, view extracted product information, view own assignments and training status, record own training completion, favorites, recent items, synchronization, limited single-record SDS/product capture
+  Platform integrations: Camera, QR/barcode reader, file/share import
+  Notes: Consumption-first client. Work Area assignment personalizes the worker experience but does not restrict Company hazard/SDS browsing. Management actions appear only when both Access & Identity and this client's configured capability allow them.
+- iOS [iOS]: responsibility=consumption; localDataRole=published-replica; offline=yes
+  Local persistence: SQLite + application-managed SDS files
+  Capabilities/workflows: Search, browse Company work areas, emphasize assigned work areas, view SDS, view extracted product information, view own assignments and training status, record own training completion, favorites, recent items, synchronization, limited single-record SDS/product capture
+  Platform integrations: Camera, QR/barcode reader, file/share import
+  Notes: Consumption-first client. Work Area assignment personalizes the worker experience but does not restrict Company hazard/SDS browsing. Management actions appear only when both Access & Identity and this client's configured capability allow them.
+- Windows [Windows]: responsibility=authoring; localDataRole=draft-authority; offline=yes
+  Local persistence: SQLite + Application-managed SDS files
+  Capabilities/workflows: Company administration, work area management, user and assignment management, bulk SDS import, OCR and extraction, extraction review, duplicate detection, revision handling, SDS replacement, bulk operations, publishing, backup and export
+  Platform integrations: Filesystem, drag-and-drop, file picker, scanner
+  Notes: Windows is the primary management and bulk-ingestion environment. It supports complete HazCom authoring, SDS ingestion/review, worker/assignment management, publishing, reporting, backup, and export.
+
+DATA MOVEMENT
+- Mode: publish-revision
+- Draft/working authority: client-local
+- Published/shared authority: shared-backend
+- Background synchronization: enabled
+- Notes: Windows maintains working changes locally. Approved changes are published as versioned company datasets. Mobile clients compare their local revision with the published revision and download required updates rather than continuously synchronizing every edit.
+
+SHARED BACKEND
+- Provider/foundation: Firebase
+- Authentication: Firebase Authentication with Google sign-in
+- Structured data: Cloud Firestore
+- Managed files: Cloud Storage for Firebase
+- Notifications/messaging: Firebase Cloud Messaging
+- Diagnostics: Crashlytics for Android/iOS; Windows diagnostics handled separately
+- Notes: Cloud-hosted published company data is authoritative for distributed clients. Firebase does not replace the required local/offline databases.
+
+IMPLEMENTATION BOUNDARIES
+- Do not force feature parity across clients. Implement only the responsibilities and workflows assigned to each client.
+- Local persistence, shared persistence, and synchronization are separate architecture layers. A client may use SQLite/files locally while a shared backend uses an entirely different database/file service.
+- Do not replace a required local/offline store merely because a shared backend exists.
+- When draft and published authority differ, preserve that distinction explicitly instead of treating every copy as equally authoritative.
+- Platform integrations are implementation capabilities, not new domain entities unless the product separately models them as business records.

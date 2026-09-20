@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function hasMembership(companyId) {
+      return request.auth != null
+        && firestore.get(
+          /databases/(default)/documents/companies/$(companyId)/memberships/$(request.auth.uid)
+        ).data.active == true;
+    }
+
+    match /companies/{companyId}/revisions/{revisionId}/{allPaths=**} {
+      // Published SDS/revision files are readable only by an active Company member.
+      // Revision uploads remain server-authoritative and are never client-writable.
+      allow read: if hasMembership(companyId);
+      allow write: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

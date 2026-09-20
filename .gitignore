@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+*.db
+*.db-shm
+*.db-wal
+apps/windows/src-tauri/target/
+apps/mobile/android/
+apps/mobile/ios/
+.firebase/

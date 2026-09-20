@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = resolve(here, '..');
+const schema = readFileSync(resolve(root, 'database/migrations/001_constellation.sql'), 'utf8');
+const derived = readFileSync(resolve(root, 'database/migrations/002_derived_views.sql'), 'utf8');
+const db = new DatabaseSync(':memory:');
+db.exec('PRAGMA foreign_keys = ON;');
+db.exec(schema);
+db.exec(derived);
+
+const run = (sql, ...params) => db.prepare(sql).run(...params);
+run('INSERT INTO company(id,name,contact_email) VALUES(?,?,?)', 'c1', 'Test Co', 'test@example.com');
+run('INSERT INTO work_area(id,name,location,poc_name,poc_email,poc_phone_number,description) VALUES(?,?,?,?,?,?,?)', 'wa1','Paint Shop','B1','Lead','lead@example.com','555','Paint area');
+run('INSERT INTO work_area__ownership(id,child_id,relationship_id,company_id) VALUES(?,?,?,?)', 'ow1','wa1','10f4ef7a-86c3-4f4d-9d33-cff2c0eee738','c1');
+run('INSERT INTO worker(id,name) VALUES(?,?)', 'w1','Worker One');
+run('INSERT INTO worker__ownership(id,child_id,relationship_id,company_id) VALUES(?,?,?,?)', 'ow2','w1','1e679f94-12b0-4d70-839e-d54c064f5ab1','c1');
+run('INSERT INTO work_area_assignment(id,assigned_date,training_required_since) VALUES(?,?,?)', 'a1','2026-09-01','2026-09-01');
+run('INSERT INTO work_area_assignment__ownership(id,child_id,relationship_id,work_area_id) VALUES(?,?,?,?)', 'ow3','a1','2915981b-e56b-4e0b-a619-a1fbcf9a6566','wa1');
+run('INSERT INTO rel_worker_work_area_assignment_d30ac2b9(id,worker_id,work_area_assignment_id) VALUES(?,?,?)', 'r1','w1','a1');
+run('INSERT INTO chemical_product(id,product_name,manufacturer,sds_date) VALUES(?,?,?,?)', 'p1','Cleaner','Maker','2026-08-01');
+run('INSERT INTO chemical_product__ownership(id,child_id,relationship_id,company_id) VALUES(?,?,?,?)', 'ow4','p1','940a4d09-5250-4b89-9911-1ac6f4ba64cf','c1');
+run('INSERT INTO dm_attachments(id,owner_type,owner_id,slot_key,ordinal,relative_path,original_filename,mime_type,size_bytes,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', 'f1','chemical_product','p1','sds',0,'attachments/p1/sds.pdf','sds.pdf','application/pdf',1,'2026-09-01T00:00:00Z');
+run('INSERT INTO work_area_product(id,quantity,storage_location,added_date) VALUES(?,?,?,?)', 'wap1','1 gal','cabinet','2026-09-10');
+run('INSERT INTO work_area_product__ownership(id,child_id,relationship_id,work_area_id) VALUES(?,?,?,?)', 'ow5','wap1','96db12e7-1201-4f03-8a31-3a8fa6c2ab95','wa1');
+run('INSERT INTO rel_chemical_product_work_area_product_9d42d6cd(id,chemical_product_id,work_area_product_id) VALUES(?,?,?)', 'r2','p1','wap1');
+run('INSERT INTO hazcom_review(id,review_date) VALUES(?,?)', 'hr1','2026-01-15');
+run('INSERT INTO hazcom_review__ownership(id,child_id,relationship_id,work_area_id) VALUES(?,?,?,?)', 'ow6','hr1','024e4f65-976b-4a77-8323-d4b317e693a1','wa1');
+run('INSERT INTO sds_verification(id,verified_at) VALUES(?,?)', 'sv1','2026-08-20');
+run('INSERT INTO sds_verification__ownership(id,child_id,relationship_id,chemical_product_id) VALUES(?,?,?,?)', 'ow7','sv1','7b8f5523-3a5c-4bfa-bf83-e5310911ea7b','p1');
+run('INSERT INTO training_event(id,training_date) VALUES(?,?)', 'te1','2026-09-11');
+run('INSERT INTO training_event__ownership(id,child_id,relationship_id,work_area_assignment_id) VALUES(?,?,?,?)', 'ow8','te1','609b3aa7-28ab-498b-8b28-287c5232be85','a1');
+
+assert.equal(db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
+assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+const review = db.prepare('SELECT latest_hazcom_review_date,next_review_due FROM v_work_area_compliance WHERE work_area_id=?').get('wa1');
+assert.equal(review.latest_hazcom_review_date, '2026-01-15');
+assert.equal(review.next_review_due, '2027-01-15');
+const verification = db.prepare('SELECT latest_sds_verification_date,verification_due FROM v_chemical_product_compliance WHERE chemical_product_id=?').get('p1');
+assert.equal(verification.latest_sds_verification_date, '2026-08-20');
+assert.equal(verification.verification_due, '2027-02-20');
+const training = db.prepare('SELECT latest_training_date,training_status FROM v_assignment_training_status WHERE work_area_assignment_id=?').get('a1');
+assert.equal(training.latest_training_date, '2026-09-11');
+assert.equal(training.training_status, 'current');
+
+console.log('SQLite schema and derived-view validation passed.');

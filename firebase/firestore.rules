@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function membership(companyId) {
+      return get(/databases/$(database)/documents/companies/$(companyId)/memberships/$(request.auth.uid));
+    }
+    function hasMembership(companyId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/companies/$(companyId)/memberships/$(request.auth.uid))
+        && membership(companyId).data.active == true;
+    }
+    function isManager(companyId) { return hasMembership(companyId) && membership(companyId).data.role in ['manager','administrator']; }
+    function isAdmin(companyId) { return hasMembership(companyId) && membership(companyId).data.role == 'administrator'; }
+
+    match /companies/{companyId} {
+      allow read: if hasMembership(companyId);
+      allow create: if false; // provisioned through entitled backend flow
+      allow update: if isAdmin(companyId);
+      allow delete: if false;
+
+      match /memberships/{uid} {
+        allow read: if hasMembership(companyId) && (request.auth.uid == uid || isAdmin(companyId));
+        allow write: if false; // account/membership administration goes through backend authority
+      }
+
+      match /publishedRevisions/{revisionId} {
+        allow read: if hasMembership(companyId);
+        allow write: if false; // immutable revision publication goes through backend authority
+
+        match /{document=**} {
+          allow read: if hasMembership(companyId);
+          allow write: if false;
+        }
+      }
+
+      match /trainingEvents/{eventId} {
+        allow read: if hasMembership(companyId);
+        allow write: if false; // Members use recordTrainingCompletion callable; events are append-only.
+      }
+
+      match /{document=**} {
+        allow read: if hasMembership(companyId);
+        allow write: if false;
+      }
+    }
+  }
+}

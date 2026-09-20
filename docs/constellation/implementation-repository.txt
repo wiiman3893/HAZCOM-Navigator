@@ -1,0 +1,6 @@
+IMPLEMENTATION REPOSITORY
+- Provider: GitHub
+- Repository target: SaturnStraw/HAZCOM-Navigator
+- If the repository already exists, use that repository as the implementation destination.
+- If the repository does not exist when implementation begins, create it deliberately at that time, then build in it.
+- Entering or editing this repository target in Constellation must never create or mutate the repository by itself.
