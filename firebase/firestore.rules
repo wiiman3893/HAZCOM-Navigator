@@ -1,3 +1,5 @@
+// CODEX HANDOFF (2026-09-20): This ruleset was compiled, emulator-tested, and deployed to hazcom-navigator-dev.
+// All client writes are intentionally denied; trusted mutations go through callable Functions. Do not loosen this to make UI work.
 rules_version = '2';
 // Backend-owned schema (see README): accounts/{uid}, subscriptions/{uid};
 // companies/{companyId} has active:bool/currentRevisionId:string|null/currentRevisionNumber:int.

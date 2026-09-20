@@ -20,6 +20,8 @@
     "firebase:signin": "vite --config firebase/dev-vite.config.ts"
   },
   "devDependencies": {
-    "typescript": "7.0.2"
+    "firebase": "12.19.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
   }
 }

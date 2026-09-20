@@ -1,3 +1,5 @@
+// CODEX HANDOFF (2026-09-20): Emulator-tested SDS rules. Cloud deployment is pending Blaze + creation of the default us-central1 Storage bucket.
+// Clients get authenticated reads only after membership + published attachment checks; all client writes remain denied.
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
