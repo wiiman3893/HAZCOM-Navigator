@@ -1,6 +1,6 @@
 # Codex handoff — Firebase checkpoint
 
-> **Checkpoint date:** 2026-09-20. Read this before spending tokens rediscovering Firebase state.
+> **Checkpoint date:** 2026-09-21. Read this before spending tokens rediscovering Firebase state.
 
 ## Already completed and verified
 
@@ -42,6 +42,14 @@ The security model is deliberate: Firebase owns identity, subscriptions/entitlem
 - Real SDS upload/publication/download/hash, nonmember/unauthenticated denial and overwrite/delete/list denial passed at 2026-09-21T02:48:26Z. Administrative metadata check confirmed no persistent Firebase download token after download. Synthetic Development Smoke Test Companies and one private denial fixture remain in dev only.
 - Windows gate implemented: system-browser Google sign-in -> Account -> entitlement -> canonical Memberships -> active Company selection/create -> existing shell. SQLite preload removed; live Manager/Admin authorization required to open drafts. Member view does not open draft SQLite.
 - Native relay is intentionally debug-only, loopback-bound, one-use nonce/strict origin, three-minute lifetime, memory-only credentials. Production native OAuth, persistent secure credentials and offline leases remain separate work. See README and VALIDATION for exact verification status.
+
+## Source preservation and native evidence
+
+- Working local source was promoted as `64b65c9311557de05eb93840ae88ff4ec0c46fb4`; local main, remote main and `frozen/working-google-auth-2026-09-21` initially matched exactly.
+- Old remote main is archived at `archive/pre-local-working-import-2026-09-21` / `d9bf90897003c4a5f46b32348706114610b53fea`. Do not merge it into or repoint the working snapshot.
+- The user confirmed real system-browser Gmail sign-in returned and unlocked the native application. The actual local database has successful migrations, integrity_check=ok and persisted authenticated Company workspaces.
+- A fresh native debug launch and the full committed-source test/build suite passed on September 21. Desktop inspection hit an app-approval timeout; fresh visual logout/restart/cancellation acceptance checks remain unverified. No persistent native session is implemented; login is expected after restart.
+- [Windows auth handoff](../docs/WINDOWS_AUTH_HANDOFF.md) records the exact relay, front-door state matrix, ranked future hurdles and scalable publisher proposal. The second `frozen/authenticated-front-door-2026-09-21` snapshot preserves this source and documentation. Keep frozen refs immutable.
 
 ## Important boundaries for future Codex runs
 

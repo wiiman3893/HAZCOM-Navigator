@@ -1,29 +1,57 @@
-# Development foundation verification — 2026-09-20
+# Verified local working checkpoint — 2026-09-21
+
+The local source was committed as `64b65c9311557de05eb93840ae88ff4ec0c46fb4` and pushed to main and `frozen/working-google-auth-2026-09-21`. The old GitHub main was preserved at `archive/pre-local-working-import-2026-09-21` (`d9bf90897003c4a5f46b32348706114610b53fea`). Remote refs and authentication files were verified after push. No remote history rewrite or replacement of the working local auth approach occurred.
+
+## Actual cloud state
 
 | Check | Verified result |
 |---|---|
-| Project | Firebase MCP and CLI both list `hazcom-navigator-dev`, HazCom Navigator Dev, ACTIVE |
-| Windows Web registration | `1:391606138651:web:b4b8dab8d0ef45d43f85be`; public config retrieved from Firebase |
-| Google provider | Auth configuration reports Google enabled; localhost added to authorized domains |
-| Firestore | `(default)`, STANDARD, FIRESTORE_NATIVE, `us-central1` |
-| Firestore rules/indexes | Final CLI deployment succeeded; rules compiled and remote rules retrieved for comparison |
-| FCM | `fcm.googleapis.com` enabled |
-| Storage cloud | Bucket listing empty; deployment reports Storage not set up; blocked by billing/bucket creation |
-| Functions cloud | CLI function listing empty; deployment explicitly blocked enabling `artifactregistry.googleapis.com` without Blaze |
-| Aliases/guard | Both alias files point default/dev to HazCom Dev; deployment hook restricts project |
-| Firebase suite | 10/10 tests passed on Node.js 24 and **Node.js 22.23.2**, with Java 21/Auth/Firestore/Storage emulators |
-| Functions TypeScript | Build passed as part of the suite |
-| Existing repository tests | `npm test`: core business rules and SQLite schema/derived-view validation passed |
-| Client builds | Windows React/Tauri frontend and mobile React frontend builds passed; no native binary build claimed |
-| Sign-in harness | Typecheck passed; localhost HTML and transformed TypeScript returned HTTP 200; interactive Google consent not performed |
-| Command Rhythm | No writes/deployments targeted it; listing metadata/etag unchanged from the initial inspection |
+| Project / app | Existing `hazcom-navigator-dev`, number `391606138651`, Web app `1:391606138651:web:b4b8dab8d0ef45d43f85be` |
+| Auth | Google enabled; real Google UID present and enabled; anonymous/email-password disabled; localhost authorized |
+| Billing | Fresh Cloud Billing API returns billingEnabled=true |
+| Firestore | `(default)`, STANDARD, FIRESTORE_NATIVE, us-central1 |
+| Rules | Remote Firestore and Storage release sources retrieved and compared with repo; all direct client writes denied |
+| Index | trainingEvents workerId ASC + createdAt ASC present; server includes its normal __name__ suffix |
+| FCM | fcm.googleapis.com enabled |
+| Functions | All ten existing functions ACTIVE, us-central1, nodejs22; unauthenticated cloud calls rejected |
+| Storage | Private hazcom-navigator-dev.firebasestorage.app in US-CENTRAL1; no public IAM binding |
+| Storage integration | Storage service agent has firebaserules.firestoreServiceAgent; local GET/HEAD CORS recorded in storage.cors.json |
+| Deployment housekeeping | Seven-day Artifact Registry cleanup configured |
+| Unrelated project | No writes/deployments targeted command-rhythm |
 
-Tests exercise actual trusted handlers against emulator Admin services and unprivileged SDK clients against both Rules runtimes. They cover concurrent Customer creation and publication, retries, Professional isolation, self-enrollment/role escalation attempts, tenant and personal-data reads, direct write/delete denial, unsafe payloads, SDS upload/download restrictions, entitlement expiration, self-training, and membership revocation. The Storage null-value log for a nonexistent outsider membership is an expected denied request; it does not open access.
+The ten functions are bootstrapAccount, createCompany, updateCompany, setActiveCompany, setMembership, coverCompany, recordTrainingCompletion, beginPublication, uploadPublicationSds and finalizePublication. A cached MCP process initially reported stale billing state; fresh CLI deployment and API verification succeeded. Non-interactive CLI deployment skipped cross-service IAM; granting the documented role to the Storage service agent fixed authorization. Browser getBytes also required explicit bucket CORS. Neither fix loosened Security Rules.
 
-The Storage emulator creates a token after successful GET; production-like token-free download behavior remains a required cloud smoke test after bucket provisioning. Upload verifies token removal before publishing. No end-to-end native Tauri OAuth or real development user entitlement test is claimed.
+## Real-cloud evidence (not emulator substitutes)
 
-Compatible npm audit fixes were attempted. Four moderate transitive uuid-related findings remain in the workspace tree (two in the standalone Functions tree); no forced unrelated dependency change was made.
+The signed-in user's cloud harness passed at **2026-09-21T02:48:26.742Z**. It used actual Google Auth, bootstrapped the Account, read a temporary 30-day Professional entitlement assigned by the existing IAM-only development utility, created a Company with Manager membership, selected it, and verified Manager administration/self-promotion/client-entitlement writes were denied.
 
-Git staging is limited to Firebase foundation/config/docs, environment example, two Vite type declarations and development commands. The ignored local `.env`, original untracked root `package-lock.json`, Constellation artifacts, Evidence directory, native generated files and other pre-existing untracked files are not part of the foundation commit. No service-account keys, CLI login/refresh credentials or OAuth client secrets are included.
+SDS checks passed: trusted PDF upload, atomic immutable publication, authenticated member getBytes with matching SHA-256, unauthenticated download denial, signed-in nonmember download denial against a private fixture, and direct overwrite/delete/broad-list denial. The operator read object metadata after download: **no persistent firebaseStorageDownloadTokens**. The upload Function also checks token absence before registering the attachment.
 
-Next: approve Blaze for the development project, provision the default Storage bucket in `us-central1`, deploy remaining resources, then use the real Google sign-in harness and IAM-only entitlement utility described in [README](README.md).
+Evidence Company: `smoke-5e801676-e4a3-4ba1-aca4-9629385730b0`; revision: `d5bd3eb4-0a56-4b69-bb5d-e0f87ac5f5d7`; SHA-256: `b8274cd2f933ba897ac5a626e96063aa6ed45d4389b105279661a55aedd2bc6f`. This is a synthetic development PDF, not a safety document. The ignored local report is firebase/.firebase/cloud-smoke.json. Smoke Companies/private fixture remain in development; no production data was created.
+
+The unauthorized signed-in check uses a real signed-in user with no membership in the fixture Company, not a fabricated second Google identity. A separate human account was not tested.
+
+## Validation of the committed local source
+
+| Command/check | Result |
+|---|---|
+| npm install | Passed; lockfiles retained; four existing moderate advisories, no forced audit fix |
+| npm test | Core business-rule tests and SQLite schema/derived-view validation passed |
+| npm run test:firebase | **10/10 passed**, Java 21, Node 24 workstation, isolated demo-hazcom-navigator |
+| npm run build | Core, Windows frontend and mobile frontend passed |
+| npm run build -w @hazcom/firebase-functions | TypeScript build passed; deployed runtime remains Node 22 |
+| cargo test --lib --manifest-path apps/windows/src-tauri/Cargo.toml | Passed callback security test (Host/Origin/nonce/replay/body limits) |
+| npm run tauri -w @hazcom/windows -- dev | Debug native build and actual executable launch succeeded |
+| Actual Google -> native return | User explicitly confirmed choosing Gmail and the app unlocking; no embedded-login shortcut |
+| Actual local workspace DB | Read-only inspection: integrity_check=ok; both SQLx migrations successful; authenticated development Company headers persisted |
+| Secrets/artifacts | Staged source scan found no credential/private-env/generated-output candidates; required untracked auth files included |
+
+The missing-membership Storage null-value warning is resolved with fail-closed guards, without increasing its two document lookups. The latest suite had no Storage null warning. A non-fatal Admin SDK metadata-discovery warning remains. Node 24 produces a Node 22 engine warning locally; cloud Functions are verified nodejs22. The Windows Firebase bundle emits a size warning; no cosmetic/bundling rewrite was made.
+
+## Precise acceptance limits
+
+No release installer or production OAuth flow was tested: the current native relay intentionally rejects release builds. Windows and browser Firebase sessions are memory-only, so restart requires sign-in again. The September 21 native launch succeeded, but direct desktop inspection returned **Computer Use app approval timed out** while the user was away. Fresh visual verification of restart, logout/relogin, popup cancellation and every front-door state was therefore not completed; these are code-reviewed behaviors, not claimed interactive passes. No permission/authentication bypass was used to manufacture evidence.
+
+The authenticated Company/front-door implementation and prior user-confirmed sign-in are preserved. Local database evidence independently verifies initialization/persistence after the SQL capability fix. See [Windows auth handoff](../docs/WINDOWS_AUTH_HANDOFF.md) for implementation details, the state matrix, production work and ranked technical risks.
+
+Source snapshots do not back up cloud or SQLite data. Development Firestore PITR and deletion protection were observed disabled. Offline leases, billing-provider webhooks, Windows publisher serialization, mobile replica importing, App Check enforcement and large-scale publication remain unimplemented.

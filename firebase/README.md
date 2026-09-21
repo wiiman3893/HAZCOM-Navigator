@@ -61,6 +61,8 @@ Two prerequisites were discovered by the live SDS test:
 
 The Firebase MCP process held a stale billing-disabled cache; a fresh Firebase CLI process verified billing and deployed successfully. Do not create another project or change the runtime to work around stale process state. Google sign-in is enabled, localhost is authorized, anonymous/email-password auth remain disabled. CLI 15.30.2 did not originally apply authorizedDomains; it was set separately through the authenticated Auth API and verified.
 
+See [Windows auth handoff](../docs/WINDOWS_AUTH_HANDOFF.md) for the frozen commit, exact authentication mechanism, state matrix, acceptance limits and ranked next tasks. The actual user confirmed browser sign-in unlocked the native app; the local Company workspace database was independently checked.
+
 ## Windows authenticated development entry
 
 Copy the public repository `.env.example` to ignored `.env` if needed. Run `npm run tauri -w @hazcom/windows -- dev` from the repository root. The native app opens its sign-in page in the system browser. Click **Continue with Google**, finish Google's consent, and return to Windows. The Firebase Web SDK exchanges the returned Google ID token for a Firebase session, calls bootstrapAccount, reads the Account/entitlement and membership discovery index, rechecks canonical Company membership, and restores or selects the active Company through setActiveCompany. Eligible accounts can create a Company through createCompany; backend plan/count/role checks remain authoritative.

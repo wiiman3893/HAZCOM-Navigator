@@ -26,6 +26,8 @@ Blaze is enabled for hazcom-navigator-dev. The private US-CENTRAL1 bucket, ten N
 
 The Windows entry flow is implemented with a development-only system-browser relay. SQLite opens only after live Company authorization; member accounts do not open the local authoring dataset. Production OAuth/PKCE/return handling, secure persistent sessions, offline leases and full native acceptance testing remain separately tracked in Firebase documentation.
 
+The current working source is preserved at `frozen/working-google-auth-2026-09-21` (`64b65c9`). All requested committed-source tests/builds passed. The user confirmed the real native Google return; SQLite integrity, migrations and persisted Company headers were independently verified. Interactive logout/restart/cancellation acceptance was limited by a desktop app-approval timeout. See [Windows auth handoff](WINDOWS_AUTH_HANDOFF.md) for the exact mechanisms and ranked technical hurdles. No auth redesign was made after preservation.
+
 ## Next implementation slices
 
 1. Finalize production desktop OAuth and secure session/offline policy. Development cloud provisioning and smoke tests are complete.
