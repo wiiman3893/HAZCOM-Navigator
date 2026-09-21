@@ -31,15 +31,17 @@ Do not regenerate these from scratch unless a requirement changes:
 
 The security model is deliberate: Firebase owns identity, subscriptions/entitlements, Company coverage, memberships/roles, published revisions, and published SDS access. Windows SQLite owns unpublished working drafts. Mobile SQLite is a published replica/cache. Publication is explicit and revision-oriented; there is no raw SQLite upload and no continuous bidirectional edit sync.
 
-## Cloud blockers / remaining Firebase work
+## Completed cloud setup and current client work
 
-1. Upgrade **only `hazcom-navigator-dev`** to Blaze / attach billing. Functions deployment previously stopped while enabling Artifact Registry.
-2. Provision default Storage bucket `hazcom-navigator-dev.firebasestorage.app` in `us-central1`, restricted/private.
-3. Run `npm run firebase:deploy` from repository root. The deployment guard refuses any project other than `hazcom-navigator-dev`.
-4. Verify cloud Functions, Storage Rules and Firestore-backed Storage membership lookup.
-5. Perform a real authenticated SDS upload/download smoke test and verify no `firebaseStorageDownloadTokens` metadata is left on the object.
-6. Run the temporary `npm run firebase:signin` browser harness, Google-sign-in a real dev user, call `bootstrapAccount`, then use `firebase/functions/scripts/dev-admin.mjs` with ADC to grant that UID a temporary development entitlement.
-7. Only after the backend smoke test, wire the real Tauri Windows authentication/application gate and active-Company hydration.
+- Blaze billing verified enabled with fresh Cloud Billing API; stale MCP billing state was bypassed with a fresh Firebase CLI process.
+- Default private bucket `hazcom-navigator-dev.firebasestorage.app` created in US-CENTRAL1.
+- All ten existing Node 22 callable Functions deployed ACTIVE in us-central1. Seven-day Artifact Registry cleanup configured. All ten reject unauthenticated cloud calls.
+- Firestore and Storage rules deployed and remote source compared to this checkout. The missing-membership Storage null warning was fixed with fail-closed null/default guards; no client writes were enabled.
+- Storage cross-service IAM was initially missing because non-interactive CLI deployment skips the check. The Storage service agent now has roles/firebaserules.firestoreServiceAgent. Browser-download CORS is deployed from storage.cors.json.
+- Real Google Account bootstrap, 30-day Professional entitlement (existing IAM-only utility), Company/Manager membership and role enforcement passed. No client entitlement bypass.
+- Real SDS upload/publication/download/hash, nonmember/unauthenticated denial and overwrite/delete/list denial passed at 2026-09-21T02:48:26Z. Administrative metadata check confirmed no persistent Firebase download token after download. Synthetic Development Smoke Test Companies and one private denial fixture remain in dev only.
+- Windows gate implemented: system-browser Google sign-in -> Account -> entitlement -> canonical Memberships -> active Company selection/create -> existing shell. SQLite preload removed; live Manager/Admin authorization required to open drafts. Member view does not open draft SQLite.
+- Native relay is intentionally debug-only, loopback-bound, one-use nonce/strict origin, three-minute lifetime, memory-only credentials. Production native OAuth, persistent secure credentials and offline leases remain separate work. See README and VALIDATION for exact verification status.
 
 ## Important boundaries for future Codex runs
 
@@ -50,6 +52,6 @@ The security model is deliberate: Firebase owns identity, subscriptions/entitlem
 - Do **not** weaken Firestore/Storage rules merely to make client development easier.
 - Do **not** upload the raw Windows SQLite database as synchronization.
 - Do **not** edit `docs/constellation/*` to match implementation details; those are source/reference artifacts.
-- Billing-provider integration, production Firebase project creation, offline signed entitlement leases, and final native Tauri OAuth/deep-link handling remain future work.
+- Billing-provider integration, production Firebase project creation, offline signed entitlement leases, and production native Tauri OAuth/PKCE/return handling remain future work.
 
 See `README.md` for the data model, entitlement semantics, callable contracts, publication flow, SDS path design, and operator commands.

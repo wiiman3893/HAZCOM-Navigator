@@ -24,11 +24,7 @@
     }
   },
   "plugins": {
-    "sql": {
-      "preload": [
-        "sqlite:hazcom-navigator.db"
-      ]
-    }
+    "sql": {}
   },
   "bundle": {
     "active": true,

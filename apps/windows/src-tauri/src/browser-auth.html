@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>HazCom Navigator sign-in</title>
+<style>body{font:18px system-ui;max-width:540px;margin:12vh auto;padding:24px;color:#17202a}button{padding:14px 20px;font:inherit;background:#244b58;color:white;border:0;border-radius:8px}p{line-height:1.6}</style>
+<h1>HazCom Navigator</h1><p>Sign in to your Windows development workspace.</p>
+<button id="signin">Continue with Google</button><p id="status" role="status"></p>
+<script type="module">
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
+import {initializeAuth,inMemoryPersistence,GoogleAuthProvider,signInWithPopup,signOut,browserPopupRedirectResolver} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+// CODEX HANDOFF: System-browser-only relay. No tokens in URLs, storage or logs.
+const nonce=location.hash.slice(1);history.replaceState(null,'','/');
+const auth=initializeAuth(initializeApp(__FIREBASE_CONFIG__),{persistence:inMemoryPersistence,popupRedirectResolver:browserPopupRedirectResolver});
+const button=document.querySelector('#signin'),status=document.querySelector('#status');
+if(!/^[a-f0-9]{64}$/.test(nonce)){button.disabled=true;status.textContent='Open sign-in from the Windows app.';}
+button.onclick=async()=>{
+  button.disabled=true;status.textContent='Complete Google sign-in in the browser.';
+  try{
+    const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});
+    const result=await signInWithPopup(auth,provider);
+    const idToken=GoogleAuthProvider.credentialFromResult(result)?.idToken;
+    if(!idToken)throw Error('Google did not return a sign-in credential.');
+    const response=await fetch('/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nonce,idToken})});
+    if(!response.ok)throw Error('The Windows sign-in request expired. Start again in the app.');
+    await signOut(auth);status.textContent='Sign-in sent to HazCom Navigator. Return to the Windows app; you may close this tab.';
+  }catch(error){status.textContent=error instanceof Error?error.message:'Sign-in failed. Try again from the app.';button.disabled=false;}
+};
+</script></html>

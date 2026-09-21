@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default Windows capability",
+  "description": "Local Windows draft workspace; application entry verifies Firebase Company membership before loading SQLite.",
   "windows": [
     "main"
   ],
   "permissions": [
     "core:default",
-    "sql:default"
+    "sql:default",
+    "sql:allow-execute"
   ]
 }

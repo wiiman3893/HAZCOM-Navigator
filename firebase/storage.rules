@@ -1,15 +1,16 @@
-// CODEX HANDOFF (2026-09-20): Emulator-tested SDS rules. Cloud deployment is pending Blaze + creation of the default us-central1 Storage bucket.
+// CODEX HANDOFF (2026-09-20): Development bucket and Rules deployed in us-central1. Keep null guards fail-closed.
 // Clients get authenticated reads only after membership + published attachment checks; all client writes remain denied.
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function allowed(companyId,revisionId,attachmentId,digest) {
-      let member = firestore.get(/databases/(default)/documents/companies/$(companyId)/memberships/$(request.auth.uid)).data;
-      let attachment = firestore.get(/databases/(default)/documents/companies/$(companyId)/publishedRevisions/$(revisionId)/attachments/$(attachmentId)).data;
+      let member = firestore.get(/databases/(default)/documents/companies/$(companyId)/memberships/$(request.auth.uid));
+      let attachment = firestore.get(/databases/(default)/documents/companies/$(companyId)/publishedRevisions/$(revisionId)/attachments/$(attachmentId));
       // Storage permits at most two Firestore document lookups. published is set only
       // in the atomic revision-finalization transaction. Membership removal revokes access.
-      return member.active == true && member.role in ['administrator','manager','member']
-        && attachment.published == true && digest == attachment.sha256 + '.pdf';
+      return member != null && attachment != null
+        && member.data.get('active', false) == true && member.data.get('role', '') in ['administrator','manager','member']
+        && attachment.data.get('published', false) == true && digest == attachment.data.get('sha256', '') + '.pdf';
     }
     match /companies/{companyId}/revisions/{revisionId}/sds/{attachmentId}/{digest} {
       allow get: if request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous' && allowed(companyId,revisionId,attachmentId,digest);

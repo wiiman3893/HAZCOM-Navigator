@@ -9,12 +9,12 @@
 - Firestore: **Standard**, Native mode, **(default)** database, **us-central1**. Created and verified on 2026-09-20. This preserves the existing SDK/default-database model and supports Storage Rules' default-Firestore lookup requirement.
 - Authentication: Google provider enabled; localhost authorized. Anonymous and email/password are not enabled. Google OAuth browser consent still requires the actual user.
 - Firebase Cloud Messaging API: enabled and verified. Device registration, APNs credentials, Android app registrations, service workers and notification dispatch belong to subsequent client work.
-- Functions: Node.js 22, `us-central1`, 512 MiB, maximum 3 instances per function. Source builds and runs in the test suite. Cloud deployment is **blocked by Blaze billing** at `artifactregistry.googleapis.com` enablement.
-- Storage: intended default bucket **hazcom-navigator-dev.firebasestorage.app**, region **us-central1**. SDK config contains this bucket name, but the bucket is **not yet provisioned**. Cloud rules deployment is blocked until bucket creation/billing. The rules compile and run in the Storage emulator.
+- Functions: all ten callables deployed ACTIVE on Node.js 22 in `us-central1`, 512 MiB, maximum 3 instances per function. Artifact Registry cleanup retains seven days. Blaze billing verified enabled through the fresh Cloud Billing API.
+- Storage: **hazcom-navigator-dev.firebasestorage.app**, **US-CENTRAL1**, provisioned privately; rules deployed. Cross-service Firestore IAM and local development download CORS are configured. Real authenticated SDK download passed, with no persistent download-token metadata before or after download.
 - No application Hosting deployment or mobile Crashlytics setup. Firebase's project creation supplies a default hosting-site identifier used by Auth; no application website was deployed.
 - No production project/alias. No writes or deployments target `command-rhythm`.
 
-`../.env.example` contains verified public Web SDK configuration. `../.env` is ignored and must stay uncommitted. Never add Admin credentials, CLI credentials or refresh tokens. The existing main application screens remain a local prototype: authentication gating and native Tauri browser-return handling are future client work, not completed by this backend foundation.
+`../.env.example` contains verified public Web SDK configuration. `../.env` is ignored and must stay uncommitted. Never add Admin credentials, CLI credentials or refresh tokens. The Windows application now gates the existing shell behind Google sign-in, live Account/entitlement/membership reads and Company selection. Its native browser relay is intentionally development-only; see below.
 
 ## Run and deploy
 
@@ -50,15 +50,26 @@ npx -y firebase-tools@latest deploy --only firestore --project hazcom-navigator-
 
 Firestore, Storage and Functions predeploy hooks reject any project ID other than `hazcom-navigator-dev`. There is no production alias or reference to Command Rhythm as a deployment target. The Hooks are guardrails against accidental targets; IAM remains the remote administrative boundary.
 
-## Remaining cloud provisioning steps
+## Verified development provisioning (2026-09-20 Chicago / September 21 UTC)
 
-1. Open [HazCom Navigator Dev billing](https://console.firebase.google.com/project/hazcom-navigator-dev/overview?purchaseBillingPlan=metered) and link an approved Cloud Billing account to upgrade **only this project** to Blaze. This is the specific approval blocker reported by Functions deployment.
-2. In [this project's Storage console](https://console.firebase.google.com/project/hazcom-navigator-dev/storage), choose **Get Started**, use the default `hazcom-navigator-dev.firebasestorage.app` bucket, and choose **us-central1**. Start with restricted access. Record the actual location; bucket locations are not casually changeable. Do not make the bucket or objects public.
-3. Run `npm run firebase:deploy`. The CLI may request the cross-service permission allowing Storage Rules to read Firestore. This is required for membership enforcement. If Functions asks about Artifact Registry cleanup, choose a short development retention period such as 7 days.
-4. Verify deployed Functions in `us-central1`, bucket location, both remote rulesets, and the Google sign-in/Account flow below. Perform a real SDS upload and authenticated download, confirming the object has **no `firebaseStorageDownloadTokens` metadata before or after download**. The current emulator generates a token on a successful GET; that emulator behavior cannot certify the cloud download-token property.
-5. Do not infer bucket existence from the public SDK configuration. The verification performed before billing returned an empty bucket list.
+Billing, bucket provisioning, all ten Functions, and both rules deployments are complete. The real Google-authenticated smoke test passed at 2026-09-21T02:48:26Z. The operator verified the uploaded object still had no persistent Firebase download token after the client download. See [VALIDATION.md](VALIDATION.md) for evidence and [CODEX_HANDOFF.md](CODEX_HANDOFF.md) before continuing.
 
-The Firebase MCP successfully deployed Google Auth, but CLI 15.30.2 did not apply `auth.authorizedDomains` from configuration. `localhost` was added separately through the authenticated CLI Auth API and verified. If recreating this environment, confirm it under Authentication → Settings → Authorized domains. The app's native Tauri Google sign-in callback/deep-link flow has not been implemented or tested. Use the local browser harness for the first development identity.
+Two prerequisites were discovered by the live SDS test:
+
+1. Firebase Storage's service agent `service-391606138651@gcp-sa-firebasestorage.iam.gserviceaccount.com` needs `roles/firebaserules.firestoreServiceAgent` on this project. This is now assigned. Firebase CLI 15.30.2 skips its cross-service IAM check with `--non-interactive`, and skips it when the rules upload is unchanged; a successful rules deployment alone does not prove the binding exists. Keep this role on the Google service agent only. See [cross-service permissions](https://firebase.google.com/docs/rules/manage-deploy#manage_permissions_for_cross-service).
+2. Browser SDK `getBytes` requires bucket CORS. [storage.cors.json](storage.cors.json) records the deployed GET/HEAD origins: localhost ports 1420/1421 and the Windows Tauri origin. This does not grant object access; Storage Rules still enforce membership. To apply the same configuration with an authenticated Cloud SDK: `gcloud storage buckets update gs://hazcom-navigator-dev.firebasestorage.app --cors-file=firebase/storage.cors.json`. See [Firebase direct download requirements](https://firebase.google.com/docs/storage/web/download-files#cors_configuration).
+
+The Firebase MCP process held a stale billing-disabled cache; a fresh Firebase CLI process verified billing and deployed successfully. Do not create another project or change the runtime to work around stale process state. Google sign-in is enabled, localhost is authorized, anonymous/email-password auth remain disabled. CLI 15.30.2 did not originally apply authorizedDomains; it was set separately through the authenticated Auth API and verified.
+
+## Windows authenticated development entry
+
+Copy the public repository `.env.example` to ignored `.env` if needed. Run `npm run tauri -w @hazcom/windows -- dev` from the repository root. The native app opens its sign-in page in the system browser. Click **Continue with Google**, finish Google's consent, and return to Windows. The Firebase Web SDK exchanges the returned Google ID token for a Firebase session, calls bootstrapAccount, reads the Account/entitlement and membership discovery index, rechecks canonical Company membership, and restores or selects the active Company through setActiveCompany. Eligible accounts can create a Company through createCompany; backend plan/count/role checks remain authoritative.
+
+The relay binds only to 127.0.0.1 on an ephemeral port, uses a 256-bit one-use state value in a fragment removed from browser history, checks exact Host/Origin, accepts bounded JSON only, and expires after three minutes. Google credentials are POSTed locally and passed to Firebase; no token is put in a URL, log, localStorage or SQLite. Browser and Windows Firebase sessions use memory persistence. The relay is disabled in release builds and restricted to the existing dev project. Its official Firebase browser modules are version-pinned to 12.19.0. This is a development bridge, not the finalized production OAuth architecture.
+
+SQLite preload was removed. The local draft workspace opens only after a live Google Account and canonical Manager/Administrator membership check. Company IDs/names come from Firebase, not an unauthenticated local selector. Members see a verified access screen without reading local Worker/draft records. Account/Company switching, sign-out, offline events, membership listeners, focus and periodic refresh clear or revalidate the shell. This session adds no domain CRUD or publication UI. Existing membership retains entry when the user's personal subscription expires; server mutations still check Company coverage. No signed offline lease is implemented.
+
+Before production: choose/register the production desktop OAuth/PKCE or approved HTTPS return architecture, verify production origins/CSP/App Check, add OS-protected session persistence if desired, and implement the reviewed offline lease. Do not enable the development relay in release builds as a shortcut.
 
 ## Authority and data layout
 
@@ -193,7 +204,7 @@ Signing keys stay server-side (KMS/managed keys); clients verify with pinned/rot
 
 The emulator tests cover authentication rejection, bootstrap idempotency, concurrent Customer limits, Professional role isolation, immutable/atomic publication and retries, tenant/privacy rules, role/self-enrollment denial, linked Worker uniqueness, last-Administrator protection, self-training relationship/date checks, subscription/grace boundaries, unsafe IDs/schema/references, direct CRUD denial, SDS read/write/list boundaries, and membership revocation. An oversized-document mutation is denied. Direct mutation tests cover field deletion/corruption/privilege escalation by denying all client writes; the trusted handlers validate permitted payloads separately.
 
-Storage emulator 15.30.2 generates bearer download tokens after successful GETs. Tests verify upload metadata before the first GET and verify ordinary unauthenticated reads are denied, but a cloud test of download-token behavior remains required after billing/bucket provisioning. App Check enforcement and an end-to-end native sign-in flow remain future client integration tasks. Auth token revocation in direct Rules reads follows Firebase ID-token lifetime; Company membership revocation is checked on every online read.
+Storage emulator 15.30.2 generates bearer download tokens after successful GETs. Tests verify upload metadata before the first GET and verify ordinary unauthenticated reads are denied, and the real-cloud token-free SDS test now passes. App Check enforcement and production native sign-in remain future integration tasks. Auth token revocation in direct Rules reads follows Firebase ID-token lifetime; Company membership revocation is checked on every online read.
 
 The existing SDK dependency tree reports four moderate `uuid`-related npm advisories across Cloud Storage's dependency chain and Capacitor's Xcode tooling. A compatible `npm audit fix` did not resolve them; the suggested forced fix changes unrelated Capacitor dependencies. No forced upgrade was applied.
 

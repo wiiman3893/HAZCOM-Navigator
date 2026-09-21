@@ -1,9 +1,10 @@
 import Database from '@tauri-apps/plugin-sql';
+import { verifyCompany, type CompanyAccess } from '../auth/firebase';
 
 const DATABASE_URL = 'sqlite:hazcom-navigator.db';
 let dbPromise: Promise<Database> | null = null;
 
-export function openDatabase(): Promise<Database> {
+function openDatabase(): Promise<Database> {
   if (!dbPromise) {
     dbPromise = Database.load(DATABASE_URL).then(async db => {
       await db.execute('PRAGMA foreign_keys = ON');
@@ -28,14 +29,13 @@ async function count(db: Database, sql: string, binds: unknown[] = []): Promise<
   return Number(rows[0]?.count ?? 0);
 }
 
-export async function getDashboardCounts(activeCompanyId?: string): Promise<DashboardCounts> {
+// CODEX HANDOFF: No SQLite load before live Google/Company authorization.
+export async function getDashboardCounts(uid: string, company: CompanyAccess): Promise<DashboardCounts> {
+  const verified = await verifyCompany(uid, company.id);
+  if (verified.role === 'member') throw new Error('Company authoring access is required for local drafts.');
+  const activeCompanyId = verified.id;
   const db = await openDatabase();
-  if (!activeCompanyId) {
-    return {
-      companies: await count(db, 'SELECT COUNT(*) AS count FROM company WHERE deleted_at IS NULL'),
-      workAreas: 0, chemicalProducts: 0, workers: 0, assignments: 0,
-    };
-  }
+  await db.execute('INSERT INTO company (id,name,contact_email) VALUES ($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=excluded.name,contact_email=excluded.contact_email', [verified.id,verified.name,verified.contact_email]);
   return {
     companies: 1,
     workAreas: await count(db, `SELECT COUNT(*) AS count FROM work_area wa JOIN work_area__ownership o ON o.child_id=wa.id WHERE o.company_id=$1 AND wa.deleted_at IS NULL`, [activeCompanyId]),
@@ -45,7 +45,7 @@ export async function getDashboardCounts(activeCompanyId?: string): Promise<Dash
   };
 }
 
-export async function listCompanies(): Promise<Array<{id:string;name:string;contact_email:string}>> {
-  const db = await openDatabase();
-  return db.select('SELECT id,name,contact_email FROM company WHERE deleted_at IS NULL ORDER BY name');
+export async function closeWorkspace(): Promise<void> {
+  const pending = dbPromise; dbPromise = null;
+  if (pending) { try { await (await pending).close(); } catch { /* Already closed or initialization failed. */ } }
 }

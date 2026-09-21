@@ -1,1 +1,3 @@
-fn main() { hazcom_navigator_lib::run(); }
+fn main() {
+    hazcom_navigator_lib::run();
+}

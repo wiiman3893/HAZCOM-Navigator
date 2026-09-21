@@ -9,7 +9,7 @@
 - Assignment/product-added training requirement behavior
 - Publish-revision manifest contract
 - Verbatim Constellation SQLite schema plus derived non-authoritative views
-- Windows Tauri shell with SQLite initialization, explicit active-Company context, and scoped dashboard queries
+- Windows Tauri shell with authenticated Account/entitlement/membership entry, system-browser Google sign-in, Company selection/creation, and scoped SQLite dashboard queries after live authorization
 - Mobile Capacitor shell with SQLite published-replica initialization
 - Firebase development project `hazcom-navigator-dev` with Google Auth, Firestore and FCM configured
 - Firestore tenant/security rules deployed to the development project
@@ -22,14 +22,14 @@
 
 ## Firebase cloud checkpoint
 
-Firestore and Google Authentication are live in `hazcom-navigator-dev`. Cloud Functions source and Storage rules are in this repository but their cloud deployment is still blocked on Blaze billing and creation of the default `us-central1` Storage bucket. See `firebase/CODEX_HANDOFF.md`, `firebase/README.md`, and `firebase/VALIDATION.md` before resuming Firebase work.
+Blaze is enabled for hazcom-navigator-dev. The private US-CENTRAL1 bucket, ten Node 22 Functions and both rulesets are deployed. Cross-service Storage IAM and development browser CORS are configured. Real Google-auth and SDS smoke tests passed, including token-free authenticated download and denied unauthorized/direct-write access. See [Firebase handoff](../firebase/CODEX_HANDOFF.md) and [validation](../firebase/VALIDATION.md).
 
-The development workstation now passes both Windows and mobile frontend builds. The Firebase foundation has 10 passing emulator integration/security tests, verified on Node.js 22 and 24. Native binaries were not rebuilt in this backend task. See [Firebase validation](../firebase/VALIDATION.md) for the cloud provisioning and test evidence.
+The Windows entry flow is implemented with a development-only system-browser relay. SQLite opens only after live Company authorization; member accounts do not open the local authoring dataset. Production OAuth/PKCE/return handling, secure persistent sessions, offline leases and full native acceptance testing remain separately tracked in Firebase documentation.
 
 ## Next implementation slices
 
-1. Complete Blaze/Storage provisioning and deploy Functions + Storage Rules; perform real cloud SDS/auth smoke tests.
-2. Wire Google sign-in and the authenticated Account -> entitlement -> Memberships -> active Company front door into the Windows Tauri app.
+1. Finalize production desktop OAuth and secure session/offline policy. Development cloud provisioning and smoke tests are complete.
+2. Extend native authentication acceptance tests and implement published member read screens. The development front door is wired.
 3. Implement Windows CRUD repositories/forms for Work Areas, Workers, Chemical Products, Work Area Products, and Work Area Assignments.
 4. Connect Windows publish builder to the existing trusted revision Functions and SDS upload flow.
 5. Implement mobile revision downloader and local-replica replacement transaction.
@@ -37,4 +37,4 @@ The development workstation now passes both Windows and mobile frontend builds. 
 7. Reporting/PDF/handoff package generation.
 8. Billing-provider integration once the processor is selected.
 
-The development Firebase project is hazcom-navigator-dev. Google Authentication, Firestore in us-central1, Firestore rules/indexes and FCM are configured. Storage creation and deployed Functions await Blaze billing approval. The trusted backend now supports Account bootstrap, entitlement-sensitive Company creation, roles/memberships, coverage, explicit immutable publication, SDS uploads and member self-training. See [Firebase setup and contracts](../firebase/README.md). The payment processor, OCR engine and canonical Company/SDS retention period remain undecided.
+The development Firebase project is hazcom-navigator-dev. Google Authentication, Firestore in us-central1, Firestore rules/indexes and FCM are configured. Blaze, Storage and all ten deployed Functions are verified, including real-cloud Google/SDS checks. The trusted backend now supports Account bootstrap, entitlement-sensitive Company creation, roles/memberships, coverage, explicit immutable publication, SDS uploads and member self-training. See [Firebase setup and contracts](../firebase/README.md). The payment processor, OCR engine and canonical Company/SDS retention period remain undecided.
