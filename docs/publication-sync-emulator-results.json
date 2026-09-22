@@ -1,9 +1,9 @@
 {
-  "executedAt": "2026-09-22T01:40:11.022Z",
+  "executedAt": "2026-09-22T07:08:33.387Z",
   "passed": true,
   "projectId": "demo-hazcom-navigator",
   "transport": "Firebase client SDK -> actual Auth/Functions/Firestore/Storage emulators",
-  "elapsedMs": 94298.1418,
+  "elapsedMs": 93959.5259,
   "results": [
     {
       "name": "Real callable transport with distinct authenticated emulator clients",

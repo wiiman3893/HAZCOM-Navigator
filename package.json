@@ -20,7 +20,8 @@
     "firebase:signin": "vite --config firebase/dev-vite.config.ts",
     "build:sync": "npm run build:core && npm run build -w @hazcom/sync",
     "test:sync": "npm run build:sync && npm run test -w @hazcom/sync",
-    "test:sync:emulator": "npm run build:sync && npm run build -w @hazcom/firebase-functions && npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage,functions --project demo-hazcom-navigator --config firebase/firebase.json \"node --test packages/sync/test/emulator.test.mjs\""
+    "test:sync:emulator": "npm run build:sync && npm run build -w @hazcom/firebase-functions && npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage,functions --project demo-hazcom-navigator --config firebase/firebase.json \"node --test packages/sync/test/emulator.test.mjs\"",
+    "test:scale": "npm run build:sync && npm run build -w @hazcom/firebase-functions && npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage,functions --project demo-hazcom-navigator --config firebase/firebase.json \"node --test packages/sync/test/scalable.test.mjs\""
   },
   "devDependencies": {
     "firebase": "12.19.0",

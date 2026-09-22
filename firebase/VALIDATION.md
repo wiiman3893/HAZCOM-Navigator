@@ -1,5 +1,14 @@
 # Verified local working checkpoint — 2026-09-21
 
+## Current scalable publication source checkpoint — 2026-09-22
+
+Schema 2 staged publication is implemented and emulator-verified for **Small, Medium, Large (2,000 SDS), and Stress (5,000 SDS)**, each through independent SQLite replication. Main now uses immutable manifests, bounded chunks, authenticated binary PDF uploads, progress/resume, sealed validation, a two-document final transaction and privileged abandoned-staging cleanup. The old numeric limits were not raised; schema 1 endpoints remain explicitly isolated for compatibility/regression tests. Existing Google sign-in, Account/entitlement/Membership/Company and SQLite foundations remain intact.
+
+See [scalable publication handoff](../docs/SCALABLE_PUBLICATION_HANDOFF.md), [measured results](../docs/scalable-publication-results.json), and the security audit. The new permanent branch is `frozen/scalable-publication-proof-2026-09-22`; never repoint it or any older frozen ref. **This is a validated source/emulator milestone, not a new cloud deployment.** The development cloud still has its earlier deployed Functions/rules until a coordinated deployment of the new Functions, indexes, rules and clients is performed.
+
+The sections below retain historical foundation/checkpoint details. Their 350-record/3-MB/100-attachment publication description applies to schema 1 only; current client publishing uses schema 2.
+
+
 The local source was committed as `64b65c9311557de05eb93840ae88ff4ec0c46fb4` and pushed to main and `frozen/working-google-auth-2026-09-21`. The old GitHub main was preserved at `archive/pre-local-working-import-2026-09-21` (`d9bf90897003c4a5f46b32348706114610b53fea`). Remote refs and authentication files were verified after push. No remote history rewrite or replacement of the working local auth approach occurred.
 
 ## Actual cloud state
@@ -76,3 +85,26 @@ Small is 140 records/20 SDS files. Medium (1,560/250) and Large (10,700/2,000) a
 | Replica isolation/atomicity | Separate databases, fingerprint equality, rollback fault injection, concurrent-reader visibility and revision/member races passed |
 
 The final full emulator run took about 94 seconds on this workstation. The published JSON reports record UTC timestamps and measured values. Functions emulation used host Node 24 rather than deployed Node 22, with the CLI's existing engine warning. The existing frontend bundle-size and Admin metadata-discovery warnings remain non-fatal. No new real-cloud or physical mobile-device acceptance is claimed.
+
+
+## Scalable publication validation
+
+- `npm test`: existing core and canonical SQLite checks plus all 6 sync test groups passed.
+- `npm run build`: core/sync, Windows and mobile frontend/TypeScript builds passed.
+- Firebase Functions TypeScript build passed; cloud target remains Node 22 while local emulators use Node 24.
+- `cargo check`: native Windows compile check passed.
+- `npm run test:scale`: adversarial/recovery suite and all four full publication/replica fixture cases passed (6 tests including the parent).
+- Small: 140 records, 20 SDS. Medium: 1560/250. Large: 10700/2000. Stress: 28000/5000. No dataset was counted as successful before its receiving SQLite fingerprint matched.
+
+Full performance, operation estimates, cleanup tests and known platform/cloud limits are in [SCALABLE_PUBLICATION_HANDOFF.md](../docs/SCALABLE_PUBLICATION_HANDOFF.md).
+
+
+### Final compatibility and security addendum — 2026-09-22
+
+- `npm run test:firebase`: 10/10 passed against Auth/Firestore/Storage emulators.
+- `npm run test:sync:emulator`: 13/13 passed, including the parent test. The existing schema 1 real-callable publication, revision replacement, Member privacy, training reconciliation, failure recovery and revoked access regressions remain valid.
+- Supplemental schema 2 adversarial run: 2/2 passed, including the parent. Adds correctly hashed unauthorized manifest attempts, unauthenticated binary upload and Administrator revocation to the full-scale run’s adversarial coverage.
+- Full schema 2 scale proof: 6/6 passed, including the parent; all four fixtures completed independent SQLite replication.
+- Evidence: [legacy emulator results](../docs/publication-sync-emulator-results.json), [full scalable results](../docs/scalable-publication-results.json), [supplemental security results](../docs/scalable-publication-security-results.json), [security audit](../docs/SCALABLE_PUBLICATION_SECURITY_AUDIT.json).
+
+The only subsequent edits were documentation and clarification that the legacy local benchmark reports schema 1 limits. No production implementation changed after the successful full-scale run. No cloud deployment or physical mobile runtime validation was performed.

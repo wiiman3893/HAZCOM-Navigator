@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-09-22T01:35:23.551Z",
+  "measuredAt": "2026-09-22T06:48:37.129Z",
   "node": "v24.18.0",
   "limits": {
     "records": 350,
@@ -25,12 +25,12 @@
       "attachments": 20,
       "firstRecordLimitKind": null,
       "violations": [],
-      "exportMs": 1.3829000000000065,
-      "projectionMs": 17.557799999999986,
-      "importMs": 7.947000000000003,
+      "exportMs": 1.4110999999999763,
+      "projectionMs": 17.333799999999997,
+      "importMs": 8.082499999999982,
       "authorDbBytes": 536576,
       "replicaDbBytes": 536576,
-      "mode": "Local SQLite benchmark; only Small is eligible for Firebase publication"
+      "mode": "Local SQLite benchmark against legacy schema 1 limits; schema 2 scale evidence is recorded separately"
     },
     {
       "size": "medium",
@@ -52,12 +52,12 @@
         "Records 1560 > 350; first at workers",
         "Attachments 250 > 100"
       ],
-      "exportMs": 5.647600000000011,
-      "projectionMs": 192.83109999999988,
-      "importMs": 59.8110999999999,
+      "exportMs": 5.607999999999947,
+      "projectionMs": 196.48990000000003,
+      "importMs": 58.50539999999978,
       "authorDbBytes": 1204224,
       "replicaDbBytes": 1208320,
-      "mode": "Local SQLite benchmark; only Small is eligible for Firebase publication"
+      "mode": "Local SQLite benchmark against legacy schema 1 limits; schema 2 scale evidence is recorded separately"
     },
     {
       "size": "large",
@@ -79,12 +79,12 @@
         "Records 10700 > 350; first at chemicalProducts",
         "Attachments 2000 > 100"
       ],
-      "exportMs": 42.96100000000024,
-      "projectionMs": 1539.4451,
-      "importMs": 459.2583999999988,
+      "exportMs": 38.53759999999966,
+      "projectionMs": 1610.6590999999999,
+      "importMs": 453.2608,
       "authorDbBytes": 5103616,
       "replicaDbBytes": 5111808,
-      "mode": "Local SQLite benchmark; only Small is eligible for Firebase publication"
+      "mode": "Local SQLite benchmark against legacy schema 1 limits; schema 2 scale evidence is recorded separately"
     }
   ]
 }

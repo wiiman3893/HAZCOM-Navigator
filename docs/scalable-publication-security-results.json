@@ -1,0 +1,25 @@
+{
+  "executedAt": "2026-09-22T07:05:06.088Z",
+  "complete": true,
+  "expectedScales": [],
+  "passed": true,
+  "projectId": "demo-hazcom-navigator",
+  "node": "v24.18.0",
+  "limits": {
+    "chunkRecords": 100,
+    "filePlanRecords": 50,
+    "chunkBytes": 256000,
+    "manifestBytes": 512000,
+    "chunks": 1000,
+    "records": 100000,
+    "attachments": 20000,
+    "pdfBytes": 5242880
+  },
+  "results": [
+    {
+      "name": "Adversarial manifests/chunks/SDS, access revocation, restart resume and atomic visibility",
+      "result": "PASS"
+    }
+  ],
+  "measurements": []
+}

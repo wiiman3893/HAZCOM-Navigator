@@ -4,7 +4,7 @@ import path from 'node:path';
 import {stat,writeFile} from 'node:fs/promises';
 import {fixture} from './fixtures.mjs';
 import {nodeSqlite,nodeFiles} from '../src/node.js';
-import {buildPublication,normalizeDataset,serverRows,capacity,limits,digest,day,REPLICA_SCHEMA_SQL,sqliteReplica,sqliteJournal,scopeKey,publish,receiver,attachmentPath} from '../src/index.js';
+import {buildPublication,normalizeDataset,serverRows,capacity,limits,digest,day,REPLICA_SCHEMA_SQL,sqliteReplica,sqliteJournal,scopeKey,publishLegacy as publish,receiver,attachmentPath} from '../src/index.js';
 
 test('Company-scoped deterministic SQLite projection, deletion and relationship checks',async()=>{
   const f=await fixture();
@@ -53,7 +53,7 @@ test('Small, Medium, Large capacity and local SQLite performance evidence',async
       if(size==='small') assert.deepEqual(p.metrics.violations,[]);
       else {assert(p.metrics.violations.some(v=>v.startsWith('Records'))); assert(p.metrics.violations.some(v=>v.startsWith('Attachments')));}
       target.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-      measurements.push({size,...p.metrics,importMs,authorDbBytes:await f.dbSize(),replicaDbBytes:(await stat(path.join(f.folder,'replica.db'))).size,mode:'Local SQLite benchmark; only Small is eligible for Firebase publication'});
+      measurements.push({size,...p.metrics,importMs,authorDbBytes:await f.dbSize(),replicaDbBytes:(await stat(path.join(f.folder,'replica.db'))).size,mode:'Local SQLite benchmark against legacy schema 1 limits; schema 2 scale evidence is recorded separately'});
     } finally {target.close();f.sql.close();}
   }
   await writeFile(new URL('../../../docs/publication-sync-measurements.json',import.meta.url),JSON.stringify({measuredAt:new Date().toISOString(),node:process.version,limits,measurements},null,2)+'\n');

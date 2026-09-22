@@ -1,0 +1,208 @@
+{
+  "executedAt": "2026-09-22T06:59:59.816Z",
+  "passed": true,
+  "projectId": "demo-hazcom-navigator",
+  "node": "v24.18.0",
+  "limits": {
+    "chunkRecords": 100,
+    "filePlanRecords": 50,
+    "chunkBytes": 256000,
+    "manifestBytes": 512000,
+    "chunks": 1000,
+    "records": 100000,
+    "attachments": 20000,
+    "pdfBytes": 5242880
+  },
+  "results": [
+    {
+      "name": "Adversarial manifests/chunks/SDS, access revocation, restart resume and atomic visibility",
+      "result": "PASS"
+    },
+    {
+      "name": "small: full SQLite author -> staged Functions/Firestore/Storage -> independent replica",
+      "result": "PASS"
+    },
+    {
+      "name": "medium: full SQLite author -> staged Functions/Firestore/Storage -> independent replica",
+      "result": "PASS"
+    },
+    {
+      "name": "large: full SQLite author -> staged Functions/Firestore/Storage -> independent replica",
+      "result": "PASS"
+    },
+    {
+      "name": "stress: full SQLite author -> staged Functions/Firestore/Storage -> independent replica",
+      "result": "PASS"
+    }
+  ],
+  "measurements": [
+    {
+      "size": "small",
+      "records": 140,
+      "chunks": 9,
+      "sds": 20,
+      "jsonBytes": 19515,
+      "manifestBytes": 2319,
+      "totalStagedJsonBytes": 26032,
+      "sdsBytes": 12130,
+      "projectionMs": 18.915299999993294,
+      "publicationMs": 5345.169300000009,
+      "chunkUploadMs": 2544.0446999999986,
+      "sdsUploadMs": 1117.2078000000038,
+      "validationMs": 981.733899999992,
+      "finalizationMs": 108.51469999999972,
+      "chunksUploaded": 9,
+      "filesUploaded": 20,
+      "validationWork": {
+        "recordReads": 160,
+        "referenceReads": 105,
+        "storageMetadataReads": 20
+      },
+      "replicationMs": 454.8377000000037,
+      "sdsDownloadMs": 247.0676999999996,
+      "importMs": 8.045100000003004,
+      "replicaDbBytes": 536576,
+      "requests": {
+        "callables": {
+          "beginStagedPublication": 1,
+          "getPublicationProgress": 2,
+          "stagePublicationChunk": 9,
+          "sealPublication": 1,
+          "validatePublicationPage": 3,
+          "finalizeStagedPublication": 1
+        },
+        "sdsUploads": 20,
+        "sdsDownloads": 20
+      },
+      "logicalFirestoreWrites": 217,
+      "logicalStorageOperations": 100,
+      "operationCountNote": "Logical operation estimates from the executed successful algorithm, excluding setup, retries, indexes, auth/security-rule reads and SDK internals. Storage: create + metadata update + two metadata reads + receiver download per file. Request counts and validation reads are observed."
+    },
+    {
+      "size": "medium",
+      "records": 1560,
+      "chunks": 23,
+      "sds": 250,
+      "jsonBytes": 218291,
+      "manifestBytes": 5191,
+      "totalStagedJsonBytes": 276354,
+      "sdsBytes": 151890,
+      "projectionMs": 195.45249999999942,
+      "publicationMs": 17793.62150000001,
+      "chunkUploadMs": 753.7982000000047,
+      "sdsUploadMs": 14026.460099999997,
+      "validationMs": 2352.3684000000067,
+      "finalizationMs": 109.91769999999087,
+      "chunksUploaded": 23,
+      "filesUploaded": 250,
+      "validationWork": {
+        "recordReads": 1810,
+        "referenceReads": 1290,
+        "storageMetadataReads": 250
+      },
+      "replicationMs": 2427.717000000004,
+      "sdsDownloadMs": 1801.3592999999964,
+      "importMs": 63.48609999999462,
+      "replicaDbBytes": 1212416,
+      "requests": {
+        "callables": {
+          "beginStagedPublication": 1,
+          "getPublicationProgress": 2,
+          "stagePublicationChunk": 23,
+          "sealPublication": 1,
+          "validatePublicationPage": 6,
+          "finalizeStagedPublication": 1
+        },
+        "sdsUploads": 250,
+        "sdsDownloads": 250
+      },
+      "logicalFirestoreWrites": 2344,
+      "logicalStorageOperations": 1250,
+      "operationCountNote": "Logical operation estimates from the executed successful algorithm, excluding setup, retries, indexes, auth/security-rule reads and SDK internals. Storage: create + metadata update + two metadata reads + receiver download per file. Request counts and validation reads are observed."
+    },
+    {
+      "size": "large",
+      "records": 10700,
+      "chunks": 147,
+      "sds": 2000,
+      "jsonBytes": 1529811,
+      "manifestBytes": 30376,
+      "totalStagedJsonBytes": 1969183,
+      "sdsBytes": 1216890,
+      "projectionMs": 1631.9091999999946,
+      "publicationMs": 135656.22639999999,
+      "chunkUploadMs": 4380.716799999995,
+      "sdsUploadMs": 113014.89679999999,
+      "validationMs": 17504.410300000018,
+      "finalizationMs": 80.46700000000419,
+      "chunksUploaded": 147,
+      "filesUploaded": 2000,
+      "validationWork": {
+        "recordReads": 12700,
+        "referenceReads": 12600,
+        "storageMetadataReads": 2000
+      },
+      "replicationMs": 13773.446799999976,
+      "sdsDownloadMs": 9075.555200000003,
+      "importMs": 440.28960000001825,
+      "replicaDbBytes": 5165056,
+      "requests": {
+        "callables": {
+          "beginStagedPublication": 1,
+          "getPublicationProgress": 2,
+          "stagePublicationChunk": 147,
+          "sealPublication": 1,
+          "validatePublicationPage": 37,
+          "finalizeStagedPublication": 1
+        },
+        "sdsUploads": 2000,
+        "sdsDownloads": 2000
+      },
+      "logicalFirestoreWrites": 16889,
+      "logicalStorageOperations": 10000,
+      "operationCountNote": "Logical operation estimates from the executed successful algorithm, excluding setup, retries, indexes, auth/security-rule reads and SDK internals. Storage: create + metadata update + two metadata reads + receiver download per file. Request counts and validation reads are observed."
+    },
+    {
+      "size": "stress",
+      "records": 28000,
+      "chunks": 381,
+      "sds": 5000,
+      "jsonBytes": 3974711,
+      "manifestBytes": 77873,
+      "totalStagedJsonBytes": 5087814,
+      "sdsBytes": 3043890,
+      "projectionMs": 3913.5352999999886,
+      "publicationMs": 349338.2777,
+      "chunkUploadMs": 11409.89280000003,
+      "sdsUploadMs": 281330.94169999997,
+      "validationMs": 55605.32589999994,
+      "finalizationMs": 108.72349999996368,
+      "chunksUploaded": 381,
+      "filesUploaded": 5000,
+      "validationWork": {
+        "recordReads": 33000,
+        "referenceReads": 32750,
+        "storageMetadataReads": 5000
+      },
+      "replicationMs": 35455.09869999997,
+      "sdsDownloadMs": 20785.41579999996,
+      "importMs": 1220.109999999986,
+      "replicaDbBytes": 12611584,
+      "requests": {
+        "callables": {
+          "beginStagedPublication": 1,
+          "getPublicationProgress": 2,
+          "stagePublicationChunk": 381,
+          "sealPublication": 1,
+          "validatePublicationPage": 96,
+          "finalizeStagedPublication": 1
+        },
+        "sdsUploads": 5000,
+        "sdsDownloads": 5000
+      },
+      "logicalFirestoreWrites": 43482,
+      "logicalStorageOperations": 25000,
+      "operationCountNote": "Logical operation estimates from the executed successful algorithm, excluding setup, retries, indexes, auth/security-rule reads and SDK internals. Storage: create + metadata update + two metadata reads + receiver download per file. Request counts and validation reads are observed."
+    }
+  ]
+}

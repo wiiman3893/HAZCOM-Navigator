@@ -1,0 +1,30 @@
+{
+  "score": 4,
+  "summary": "Scalable publication preserves deny-by-default client writes, trusted identity/membership/coverage authority, Member privacy and sealed completeness before atomic publication. Emulator evidence covers the new protocol and legacy endpoint isolation. This is a pre-production prototype with remaining operational hardening.",
+  "findings": [
+    {
+      "check": "Authority source and update bypass",
+      "severity": "minor",
+      "issue": "No client-write or self-granted completion path found. Schema 1 endpoints are explicitly barred from acting on schema 2 revisions; both create and update/delete denial are tested.",
+      "recommendation": "Keep trusted service and Rules changes coordinated; retain cross-version regression tests."
+    },
+    {
+      "check": "Resource exhaustion and cleanup",
+      "severity": "moderate",
+      "issue": "Per-request, per-chunk and per-revision ceilings are enforced, but there is no new per-account active-staging quota. Privileged cleanup exists but has no deployed scheduler.",
+      "recommendation": "Before broad production use, schedule cleanup and define tenant staging quotas, rate controls and cost alerts."
+    },
+    {
+      "check": "Storage authority lookup budget",
+      "severity": "minor",
+      "issue": "The existing two-Firestore-lookup model checks Membership and publication, not a third Company.active document. Receiver entry checks Company.active; direct SDS access relies on active Membership.",
+      "recommendation": "Use Membership revocation to revoke SDS access, and coordinate Company deactivation policy with Membership updates."
+    },
+    {
+      "check": "Environment coverage",
+      "severity": "minor",
+      "issue": "Rules and services are emulator-tested. New real-cloud deployment/load and physical mobile-device acceptance have not been executed.",
+      "recommendation": "Complete coordinated deployment and platform/cloud acceptance before broadly sharing the app."
+    }
+  ]
+}

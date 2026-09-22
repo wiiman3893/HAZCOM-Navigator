@@ -12,7 +12,7 @@ import {getFirestore as adminFirestore,Timestamp} from 'firebase-admin/firestore
 import {firebaseTransport} from '../src/firebase.js';
 import {nodeSqlite,nodeFiles} from '../src/node.js';
 import {fixture,dummyPdf} from './fixtures.mjs';
-import {buildPublication,publish,receiver,sqliteReplica,sqliteJournal,REPLICA_SCHEMA_SQL,normalizeDataset,serverRows,limits,capacity} from '../src/index.js';
+import {buildPublication,publishLegacy as publish,receiver,sqliteReplica,sqliteJournal,REPLICA_SCHEMA_SQL,normalizeDataset,serverRows,limits,capacity} from '../src/index.js';
 import {dataset as backendDataset} from '../../../firebase/functions/lib/validation.js';
 
 const projectId='demo-hazcom-navigator';

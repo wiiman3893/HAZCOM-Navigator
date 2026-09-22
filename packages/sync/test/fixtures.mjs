@@ -4,7 +4,7 @@ import path from 'node:path';
 import {nodeSqlite,nodeFiles} from '../src/node.js';
 import {REPLICA_SCHEMA_SQL,recordStatements} from '../src/sqlite.js';
 import {normalizeDataset} from '../src/contract.js';
-export const sizes={small:[5,20,10],medium:[30,250,100],large:[100,2000,500]};
+export const sizes={small:[5,20,10],medium:[30,250,100],large:[100,2000,500],stress:[250,5000,1500],stress:[250,5000,1500],stress:[250,5000,1500],stress:[250,5000,1500],stress:[250,5000,1500]};
 // Original generated one-page PDF, no external content or copyrighted SDS.
 export function dummyPdf(label) {
   const text=`BT /F1 12 Tf 40 740 Td (SYNTHETIC TEST ONLY - ${label}) Tj ET`;

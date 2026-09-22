@@ -1,5 +1,14 @@
 # Implementation status
 
+## Current scalable publication source checkpoint — 2026-09-22
+
+Schema 2 staged publication is implemented and emulator-verified for **Small, Medium, Large (2,000 SDS), and Stress (5,000 SDS)**, each through independent SQLite replication. Main now uses immutable manifests, bounded chunks, authenticated binary PDF uploads, progress/resume, sealed validation, a two-document final transaction and privileged abandoned-staging cleanup. The old numeric limits were not raised; schema 1 endpoints remain explicitly isolated for compatibility/regression tests. Existing Google sign-in, Account/entitlement/Membership/Company and SQLite foundations remain intact.
+
+See [scalable publication handoff](SCALABLE_PUBLICATION_HANDOFF.md), [measured results](scalable-publication-results.json), and the security audit. The new permanent branch is `frozen/scalable-publication-proof-2026-09-22`; never repoint it or any older frozen ref. **This is a validated source/emulator milestone, not a new cloud deployment.** The development cloud still has its earlier deployed Functions/rules until a coordinated deployment of the new Functions, indexes, rules and clients is performed.
+
+The sections below retain historical foundation/checkpoint details. Their 350-record/3-MB/100-attachment publication description applies to schema 1 only; current client publishing uses schema 2.
+
+
 ## Foundation implemented
 
 - Canonical domain types and stable relationship IDs
@@ -33,7 +42,7 @@ The current working source is preserved at `frozen/working-google-auth-2026-09-2
 1. Finalize production desktop OAuth and secure session/offline policy. Development cloud provisioning and smoke tests are complete.
 2. Extend native authentication acceptance tests and implement published member read screens. The development front door is wired.
 3. Implement Windows CRUD repositories/forms for Work Areas, Workers, Chemical Products, Work Area Products, and Work Area Assignments.
-4. Add optional publication UI around the completed Windows publication service; retain explicit revision semantics.
+4. Coordinate schema 2 Functions/rules/index/client deployment, schedule staged cleanup, and later add optional publication UI around the validated service.
 5. Exercise the completed mobile SQLite replica adapter on physical devices and add authorized read screens.
 6. OCR/extraction review workflow on Windows.
 7. Reporting/PDF/handoff package generation.

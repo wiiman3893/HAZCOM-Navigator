@@ -17,6 +17,21 @@ service firebase.storage {
       // Includes Manager/Admin: uploads must pass trusted Function role and entitlement checks.
       allow list, write: if false;
     }
+    // Schema v2 uses revision publication as its atomic visibility gate. Exactly two lookups.
+    function allowedV2(companyId,revisionId,attachmentId,digest) {
+      let member = firestore.get(/databases/(default)/documents/companies/$(companyId)/memberships/$(request.auth.uid));
+      let revision = firestore.get(/databases/(default)/documents/companies/$(companyId)/publishedRevisions/$(revisionId));
+      return member != null && revision != null
+        && member.data.get('active',false) == true && member.data.get('role','') in ['administrator','manager','member']
+        && revision.data.get('schemaVersion',0) == 2 && revision.data.get('status','') == 'published'
+        && resource.metadata.get('manifestHash','') == revision.data.get('manifestHash','invalid')
+        && resource.metadata.get('companyId','') == companyId && resource.metadata.get('revisionId','') == revisionId
+        && resource.metadata.get('attachmentId','') == attachmentId && digest == resource.metadata.get('sha256','') + '.pdf';
+    }
+    match /companies/{companyId}/revisions-v2/{revisionId}/sds/{attachmentId}/{digest} {
+      allow get: if request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous' && allowedV2(companyId,revisionId,attachmentId,digest);
+      allow list, write: if false;
+    }
     match /{allPaths=**} { allow read, write: if false; }
   }
 }

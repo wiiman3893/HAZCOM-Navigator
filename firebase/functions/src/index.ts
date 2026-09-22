@@ -135,3 +135,5 @@ export const recordTrainingCompletion = onCall(async request => {
     return {id:eventId,created:true};
   });
 });
+
+export * from './staged-publication.js';

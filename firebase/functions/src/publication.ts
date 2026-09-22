@@ -9,6 +9,7 @@ const options = { region:'us-central1', maxInstances:3, memory:'512MiB' as const
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const revisionRef = (companyId:string, revisionId:string) => db.doc(`companies/${companyId}/publishedRevisions/${revisionId}`);
 function pending(data: any, uid:string) {
+  if (data?.schemaVersion != null && data.schemaVersion !== 1) fail('Legacy endpoint cannot mutate schema v2.');
   if (!data || data.status !== 'staging' || data.createdByAccountId !== uid || data.expiresAt.toMillis() <= Date.now()) denied('Publication is not an active staging session owned by this account.');
 }
 
@@ -20,6 +21,7 @@ export const beginPublication = onCall(options, async request => {
     const {company} = await membership(tx,uid,companyId,['administrator','manager']); await coverage(tx,companyId);
     const ref=revisionRef(companyId,revisionId), previous=await tx.get(ref);
     if (previous.exists) {
+      if (previous.get('schemaVersion') != null && previous.get('schemaVersion') !== 1) fail('Use schema v2 publication endpoints.');
       if (previous.get('createdByAccountId') !== uid || previous.get('parentRevisionId') !== parentRevisionId) throw new HttpsError('already-exists','Revision ID already used.');
       return {revisionId,status:previous.get('status')};
     }
@@ -80,6 +82,7 @@ export const finalizePublication = onCall(options, async request => {
   return db.runTransaction(async tx=> {
     const {company}=await membership(tx,uid,companyId,['administrator','manager']); await coverage(tx,companyId);
     const ref=revisionRef(companyId,revisionId), revision=await tx.get(ref);
+    if (revision.get('schemaVersion') != null && revision.get('schemaVersion') !== 1) fail('Use schema v2 publication endpoints.');
     if (revision.get('status') === 'published') {
       if (revision.get('createdByAccountId') !== uid || revision.get('payloadHash') !== payloadHash) throw new HttpsError('already-exists','Published revisions cannot be changed.');
       return {revisionId,revisionNumber:revision.get('revisionNumber')};

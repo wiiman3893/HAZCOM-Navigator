@@ -37,7 +37,7 @@ export function companyFields(value: unknown) {
 }
 
 // Wire projections preserve core entity fields; ownership/link tables become explicit foreign IDs.
-const schemas: Record<string, { required: string[]; optional?: string[]; dates?: string[]; refs?: Record<string,string> }> = {
+export const schemas: Record<string, { required: string[]; optional?: string[]; dates?: string[]; refs?: Record<string,string> }> = {
   workAreas: { required: ['name','location','poc_name','poc_email','poc_phone_number','description'] },
   chemicalProducts: { required: ['product_name','manufacturer','sds_date'], optional: ['chemical_names','cas_numbers'], dates: ['sds_date'] },
   workers: { required: ['name'], optional: ['email','phone'] },

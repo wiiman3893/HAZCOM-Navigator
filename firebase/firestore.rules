@@ -38,10 +38,12 @@ service cloud.firestore {
         match /{kind}/{recordId} {
           allow read: if published(companyId,revisionId) && kind in ['workAreas','chemicalProducts','workAreaProducts','sdsVerifications','hazcomReviews'];
         }
+        // Full manifest contains private Worker ID ranges; only published Managers may read it.
+        match /stagingPlan/{planId} { allow read: if published(companyId,revisionId) && manager(companyId); }
         match /workers/{workerId} { allow read: if published(companyId,revisionId) && personal(companyId,workerId); }
         match /workAreaAssignments/{assignmentId} { allow read: if published(companyId,revisionId) && personal(companyId,resource.data.workerId); }
         match /trainingEvents/{eventId} { allow read: if published(companyId,revisionId) && personal(companyId,resource.data.workerId); }
-        match /attachments/{attachmentId} { allow read: if published(companyId,revisionId) && resource.data.published == true; }
+        match /attachments/{attachmentId} { allow read: if published(companyId,revisionId) && (resource.data.get('published',false) == true || (get(/databases/$(database)/documents/companies/$(companyId)/publishedRevisions/$(revisionId)).data.schemaVersion == 2 && resource.data.get('verified',false) == true)); }
       }
       match /trainingEvents/{eventId} { allow read: if readable(companyId) && personal(companyId,resource.data.workerId); }
     }
