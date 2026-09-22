@@ -63,3 +63,10 @@ The security model is deliberate: Firebase owns identity, subscriptions/entitlem
 - Billing-provider integration, production Firebase project creation, offline signed entitlement leases, and production native Tauri OAuth/PKCE/return handling remain future work.
 
 See `README.md` for the data model, entitlement semantics, callable contracts, publication flow, SDS path design, and operator commands.
+
+
+## Publication/replication proof — September 21, 2026
+
+The deterministic Company-scoped Windows SQLite serializer, durable publication orchestration, authorized receiver, atomic independent SQLite replacement, SDS verification and separate Training Event reconciliation are implemented in `@hazcom/sync`. A real callable emulator harness proves Small Company publication, clean Device B import, later revisions, interrupted/failed imports, privacy enforcement and training reconciliation. Existing Firebase server code/rules and limits are unchanged; no cloud deployment was needed.
+
+Small is 140 records/20 SDS files. Medium (1,560/250) and Large (10,700/2,000) are rejected by the unchanged 350-record/100-attachment limits, while local SQLite import benchmarks succeed. Exact JSON/PDF boundaries are also executable tests. See [publication/sync handoff](../docs/PUBLICATION_SYNC_HANDOFF.md) for APIs, test commands, measurements, failure recovery, platform acceptance limits and the proposed scalable publisher. The new permanent checkpoint is `frozen/publication-replication-proof-2026-09-21`; existing frozen/archive refs must not be moved.

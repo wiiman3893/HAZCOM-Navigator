@@ -54,4 +54,25 @@ No release installer or production OAuth flow was tested: the current native rel
 
 The authenticated Company/front-door implementation and prior user-confirmed sign-in are preserved. Local database evidence independently verifies initialization/persistence after the SQL capability fix. See [Windows auth handoff](../docs/WINDOWS_AUTH_HANDOFF.md) for implementation details, the state matrix, production work and ranked technical risks.
 
-Source snapshots do not back up cloud or SQLite data. Development Firestore PITR and deletion protection were observed disabled. Offline leases, billing-provider webhooks, Windows publisher serialization, mobile replica importing, App Check enforcement and large-scale publication remain unimplemented.
+Source snapshots do not back up cloud or SQLite data. Development Firestore PITR and deletion protection were observed disabled. Offline leases, billing-provider webhooks, App Check enforcement and large-scale publication remain unimplemented. Windows publisher serialization and independent SQLite replica importing are now implemented and emulator-proved; physical mobile-device acceptance remains separate.
+
+
+## Publication/replication proof — September 21, 2026
+
+The deterministic Company-scoped Windows SQLite serializer, durable publication orchestration, authorized receiver, atomic independent SQLite replacement, SDS verification and separate Training Event reconciliation are implemented in `@hazcom/sync`. A real callable emulator harness proves Small Company publication, clean Device B import, later revisions, interrupted/failed imports, privacy enforcement and training reconciliation. Existing Firebase server code/rules and limits are unchanged; no cloud deployment was needed.
+
+Small is 140 records/20 SDS files. Medium (1,560/250) and Large (10,700/2,000) are rejected by the unchanged 350-record/100-attachment limits, while local SQLite import benchmarks succeed. Exact JSON/PDF boundaries are also executable tests. See [publication/sync handoff](../docs/PUBLICATION_SYNC_HANDOFF.md) for APIs, test commands, measurements, failure recovery, platform acceptance limits and the proposed scalable publisher. The new permanent checkpoint is `frozen/publication-replication-proof-2026-09-21`; existing frozen/archive refs must not be moved.
+
+### Executed publication proof validation
+
+| Check | Result |
+|---|---|
+| npm test | Passed: existing core tests, canonical SQLite validation, all 4 new publication/replica test groups |
+| npm run test:firebase | Passed: all 10 existing Firebase foundation/security tests |
+| npm run test:sync:emulator | Passed: 12 end-to-end cases plus the containing test (13/13), actual callable emulator transport |
+| npm run build | Passed: core, sync package, Windows and mobile TypeScript/frontend builds |
+| cargo check | Passed: native Windows SDS reader compiles |
+| Limits | Exact 350 records + 100 attachments finalized; 351/101 rejected; 3,000,000-byte dataset accepted by backend validator, +1 rejected; 5 MiB upload accepted, +1 rejected |
+| Replica isolation/atomicity | Separate databases, fingerprint equality, rollback fault injection, concurrent-reader visibility and revision/member races passed |
+
+The final full emulator run took about 94 seconds on this workstation. The published JSON reports record UTC timestamps and measured values. Functions emulation used host Node 24 rather than deployed Node 22, with the CLI's existing engine warning. The existing frontend bundle-size and Admin metadata-discovery warnings remain non-fatal. No new real-cloud or physical mobile-device acceptance is claimed.

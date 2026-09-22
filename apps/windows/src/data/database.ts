@@ -49,3 +49,12 @@ export async function closeWorkspace(): Promise<void> {
   const pending = dbPromise; dbPromise = null;
   if (pending) { try { await (await pending).close(); } catch { /* Already closed or initialization failed. */ } }
 }
+
+// One Company-scoped SELECT; managed file reader is bounded to app attachments.
+export async function buildWindowsPublication(uid:string,companyId:string,files:{read(path:string):Promise<Uint8Array>}) {
+  const access=await verifyCompany(uid,companyId);
+  if(access.role==='member')throw Error('Company authoring access required.');
+  const db=await openDatabase();
+  const {buildPublication}=await import('@hazcom/sync');
+  return buildPublication({select:(sql:string,values:unknown[])=>db.select(sql,values)},companyId,files);
+}

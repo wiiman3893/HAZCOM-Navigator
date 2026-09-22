@@ -1,0 +1,90 @@
+{
+  "measuredAt": "2026-09-22T01:35:23.551Z",
+  "node": "v24.18.0",
+  "limits": {
+    "records": 350,
+    "jsonBytes": 3000000,
+    "attachments": 100,
+    "pdfBytes": 5242880
+  },
+  "measurements": [
+    {
+      "size": "small",
+      "counts": {
+        "workAreas": 5,
+        "chemicalProducts": 20,
+        "workers": 10,
+        "workAreaProducts": 40,
+        "workAreaAssignments": 20,
+        "sdsVerifications": 20,
+        "hazcomReviews": 5,
+        "trainingEvents": 20
+      },
+      "records": 140,
+      "jsonBytes": 19515,
+      "attachments": 20,
+      "firstRecordLimitKind": null,
+      "violations": [],
+      "exportMs": 1.3829000000000065,
+      "projectionMs": 17.557799999999986,
+      "importMs": 7.947000000000003,
+      "authorDbBytes": 536576,
+      "replicaDbBytes": 536576,
+      "mode": "Local SQLite benchmark; only Small is eligible for Firebase publication"
+    },
+    {
+      "size": "medium",
+      "counts": {
+        "workAreas": 30,
+        "chemicalProducts": 250,
+        "workers": 100,
+        "workAreaProducts": 500,
+        "workAreaAssignments": 200,
+        "sdsVerifications": 250,
+        "hazcomReviews": 30,
+        "trainingEvents": 200
+      },
+      "records": 1560,
+      "jsonBytes": 218291,
+      "attachments": 250,
+      "firstRecordLimitKind": "workers",
+      "violations": [
+        "Records 1560 > 350; first at workers",
+        "Attachments 250 > 100"
+      ],
+      "exportMs": 5.647600000000011,
+      "projectionMs": 192.83109999999988,
+      "importMs": 59.8110999999999,
+      "authorDbBytes": 1204224,
+      "replicaDbBytes": 1208320,
+      "mode": "Local SQLite benchmark; only Small is eligible for Firebase publication"
+    },
+    {
+      "size": "large",
+      "counts": {
+        "workAreas": 100,
+        "chemicalProducts": 2000,
+        "workers": 500,
+        "workAreaProducts": 4000,
+        "workAreaAssignments": 1000,
+        "sdsVerifications": 2000,
+        "hazcomReviews": 100,
+        "trainingEvents": 1000
+      },
+      "records": 10700,
+      "jsonBytes": 1529811,
+      "attachments": 2000,
+      "firstRecordLimitKind": "chemicalProducts",
+      "violations": [
+        "Records 10700 > 350; first at chemicalProducts",
+        "Attachments 2000 > 100"
+      ],
+      "exportMs": 42.96100000000024,
+      "projectionMs": 1539.4451,
+      "importMs": 459.2583999999988,
+      "authorDbBytes": 5103616,
+      "replicaDbBytes": 5111808,
+      "mode": "Local SQLite benchmark; only Small is eligible for Firebase publication"
+    }
+  ]
+}

@@ -173,7 +173,7 @@ Wire datasets preserve the core model's entity fields. Flatten only ownership re
 
 The initial atomic publisher accepts **350 total entity records, 3 MB of JSON and 100 attachments per revision**, with PDFs up to **5 MiB each**. These explicit foundation limits keep finalization within Firestore's transaction limits. It rejects oversized publication instead of silently truncating it. Larger Companies will need a staged/chunked writer that preserves the same immutable revision and atomic current-pointer boundary; no unlimited-scale publisher is claimed here.
 
-Revision metadata contains `schemaVersion:1`, Company/revision IDs, parent ID, creator and timestamps, `revisionNumber`, `recordCounts`, `attachmentCount`, `payloadHash`, and a Company settings snapshot. Attachment metadata retains the existing `PublishedAttachment` fields: `attachmentId`, `ownerType`, `ownerId`, `slotKey`, `relativePath`, `sha256`, and `sizeBytes`. This Firestore projection can be assembled into the core `PublishedRevisionManifest`; the client adapter is future work. Backend `Timestamp` values convert to ISO strings in that adapter.
+Revision metadata contains `schemaVersion:1`, Company/revision IDs, parent ID, creator and timestamps, `revisionNumber`, `recordCounts`, `attachmentCount`, `payloadHash`, and a Company settings snapshot. Attachment metadata retains the existing `PublishedAttachment` fields: `attachmentId`, `ownerType`, `ownerId`, `slotKey`, `relativePath`, `sha256`, and `sizeBytes`. The receiving service consumes this existing Firestore wire projection directly. Entity dates normalize to calendar strings; backend lifecycle Timestamps remain authoritative metadata rather than local draft fields.
 
 All dataset documents, selected attachment publication flags and the current revision pointer commit in a single transaction. A stale parent fails; two concurrent publishers cannot both replace the same parent. A published revision cannot be edited or replaced. Retry of the same payload/revision returns the original result; changed content requires a new revision ID. Expired staging sessions cannot be finalized; unreferenced uploads remain unreadable. No automatic cleanup deletes canonical SDS/history. A future privileged staging cleanup must verify the revision never published before removing abandoned objects.
 
@@ -184,7 +184,7 @@ At startup/resume or explicit refresh:
 3. Compare `currentRevisionId`/`currentRevisionNumber` with the local replica. If equal, do not download the dataset again.
 4. If changed, read that published revision and its authorized collections into a temporary local import. Verify file SHA-256 and size; atomically replace the local published replica only after the import succeeds. Preserve the prior replica on failure.
 5. Members fetch their Worker by ID and filter `workAreaAssignments`/`trainingEvents` with `where('workerId','==',linkedWorkerId)`; unfiltered personal-data queries are denied. Managers/Administrators may download full Company datasets. Query attachments with `where('published','==',true)`.
-6. Poll Company `trainingEvents` separately using `createdAt` plus document-ID cursor; events can advance without a new Company revision. A composite `workerId + createdAt` index supports member-filtered event deltas. Deduplicate stable event IDs during later draft reconciliation; event reconciliation is distinct from general draft sync.
+6. Rescan Company `trainingEvents` separately in pages ordered by `createdAt` plus document ID; events can advance without a new Company revision. A composite `workerId + createdAt` index supports member-filtered reads. Do not persist a timestamp high-water mark: timestamps precede commit and late commits could be missed. Deduplicate stable IDs in the replica Training Event ledger; event reconciliation is distinct from general draft sync.
 
 ## SDS Storage
 
@@ -213,3 +213,10 @@ The existing SDK dependency tree reports four moderate `uuid`-related npm adviso
 Security Rules are a development prototype with executable tests, not a claim of an exhaustive production security audit. Review the model and broaden adversarial/device testing before broad distribution.
 
 References: [Storage/Firestore Rules lookup limits](https://firebase.google.com/docs/storage/security/rules-conditions), [Storage billing requirements](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024), [Callable Functions](https://firebase.google.com/docs/functions/callable).
+
+
+## Publication/replication proof — September 21, 2026
+
+The deterministic Company-scoped Windows SQLite serializer, durable publication orchestration, authorized receiver, atomic independent SQLite replacement, SDS verification and separate Training Event reconciliation are implemented in `@hazcom/sync`. A real callable emulator harness proves Small Company publication, clean Device B import, later revisions, interrupted/failed imports, privacy enforcement and training reconciliation. Existing Firebase server code/rules and limits are unchanged; no cloud deployment was needed.
+
+Small is 140 records/20 SDS files. Medium (1,560/250) and Large (10,700/2,000) are rejected by the unchanged 350-record/100-attachment limits, while local SQLite import benchmarks succeed. Exact JSON/PDF boundaries are also executable tests. See [publication/sync handoff](../docs/PUBLICATION_SYNC_HANDOFF.md) for APIs, test commands, measurements, failure recovery, platform acceptance limits and the proposed scalable publisher. The new permanent checkpoint is `frozen/publication-replication-proof-2026-09-21`; existing frozen/archive refs must not be moved.

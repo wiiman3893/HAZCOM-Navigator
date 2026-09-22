@@ -14,7 +14,8 @@
     "@tauri-apps/plugin-sql": "2.4.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "firebase": "12.19.0"
+    "firebase": "12.19.0",
+    "@hazcom/sync": "0.1.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.1",

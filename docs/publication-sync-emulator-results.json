@@ -1,0 +1,57 @@
+{
+  "executedAt": "2026-09-22T01:40:11.022Z",
+  "passed": true,
+  "projectId": "demo-hazcom-navigator",
+  "transport": "Firebase client SDK -> actual Auth/Functions/Firestore/Storage emulators",
+  "elapsedMs": 94298.1418,
+  "results": [
+    {
+      "name": "Real callable transport with distinct authenticated emulator clients",
+      "result": "PASS"
+    },
+    {
+      "name": "No network before begin preserves empty Company pointer",
+      "result": "PASS"
+    },
+    {
+      "name": "Interrupted SDS upload and duplicate upload resume with durable same-revision journal",
+      "result": "PASS"
+    },
+    {
+      "name": "Device B downloads authenticated records and SDS into its own empty SQLite database",
+      "result": "PASS"
+    },
+    {
+      "name": "Changed author state needs a new revision; stale-parent staging cannot win",
+      "result": "PASS"
+    },
+    {
+      "name": "Revision 2 download corruption/interruption and partial SQLite failure retain revision 1",
+      "result": "PASS"
+    },
+    {
+      "name": "Revision advancing during download aborts activation; next sync recovers",
+      "result": "PASS"
+    },
+    {
+      "name": "Member receives only linked Worker assignments and training; Manager-level reads denied",
+      "result": "PASS"
+    },
+    {
+      "name": "Append-only training advances independently, deduplicates and survives republishing",
+      "result": "PASS"
+    },
+    {
+      "name": "Revoked, deleted and deactivated memberships fail closed and block local access gate",
+      "result": "PASS"
+    },
+    {
+      "name": "Malformed/cross-Company/missing references and missing SDS cannot finalize",
+      "result": "PASS"
+    },
+    {
+      "name": "Actual foundation boundary evidence: 350/351 records, 3 MB, 100/101 attachments, 5 MiB PDF",
+      "result": "PASS"
+    }
+  ]
+}
