@@ -12,8 +12,8 @@
     "test:core": "npm run test -w @hazcom/core",
     "dev:windows": "npm run dev -w @hazcom/windows",
     "dev:mobile": "npm run dev -w @hazcom/mobile",
-    "build": "npm run build:sync && npm run build -w @hazcom/windows && npm run build -w @hazcom/mobile",
-    "test": "npm run test:core && npm run test:sqlite && npm run test:sync",
+    "build": "npm run build:sync && npm run build:authoring && npm run build -w @hazcom/windows && npm run build -w @hazcom/mobile",
+    "test": "npm run test:core && npm run test:sqlite && npm run test:sync && npm run test:authoring",
     "test:sqlite": "node scripts/validate-sqlite.mjs",
     "firebase:deploy": "cd firebase && npx -y firebase-tools@latest deploy --project hazcom-navigator-dev",
     "test:firebase": "npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage --project demo-hazcom-navigator --config firebase/firebase.json \"npm run test -w @hazcom/firebase-functions\"",
@@ -21,7 +21,10 @@
     "build:sync": "npm run build:core && npm run build -w @hazcom/sync",
     "test:sync": "npm run build:sync && npm run test -w @hazcom/sync",
     "test:sync:emulator": "npm run build:sync && npm run build -w @hazcom/firebase-functions && npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage,functions --project demo-hazcom-navigator --config firebase/firebase.json \"node --test packages/sync/test/emulator.test.mjs\"",
-    "test:scale": "npm run build:sync && npm run build -w @hazcom/firebase-functions && npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage,functions --project demo-hazcom-navigator --config firebase/firebase.json \"node --test packages/sync/test/scalable.test.mjs\""
+    "test:scale": "npm run build:sync && npm run build -w @hazcom/firebase-functions && npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage,functions --project demo-hazcom-navigator --config firebase/firebase.json \"node --test packages/sync/test/scalable.test.mjs\"",
+    "build:authoring": "npm run build:core && npm run build -w @hazcom/authoring",
+    "test:authoring": "npm run build:authoring && npm run test -w @hazcom/authoring",
+    "test:authoring:ui": "playwright test --config apps/windows/test/playwright.config.mjs"
   },
   "devDependencies": {
     "firebase": "12.19.0",

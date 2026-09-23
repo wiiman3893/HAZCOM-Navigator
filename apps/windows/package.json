@@ -9,15 +9,17 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@hazcom/authoring": "0.1.0",
     "@hazcom/core": "0.1.0",
+    "@hazcom/sync": "0.1.0",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-sql": "2.4.1",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
     "firebase": "12.19.0",
-    "@hazcom/sync": "0.1.0"
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "2.11.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

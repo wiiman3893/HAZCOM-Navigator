@@ -4,7 +4,7 @@ import { verifyCompany, type CompanyAccess } from '../auth/firebase';
 const DATABASE_URL = 'sqlite:hazcom-navigator.db';
 let dbPromise: Promise<Database> | null = null;
 
-function openDatabase(): Promise<Database> {
+export function openDatabase(): Promise<Database> {
   if (!dbPromise) {
     dbPromise = Database.load(DATABASE_URL).then(async db => {
       await db.execute('PRAGMA foreign_keys = ON');

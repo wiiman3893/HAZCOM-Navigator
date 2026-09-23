@@ -1,0 +1,30 @@
+{
+  "executedAt": "2026-09-23T02:19:38.977Z",
+  "node": "v24.18.0",
+  "measurements": [
+    {
+      "size": "small",
+      "records": 140,
+      "snapshotMs": 1.1962999999998374,
+      "filterMs": 0.0341000000000804,
+      "editMs": 1.355600000000095,
+      "matched": 1
+    },
+    {
+      "size": "medium",
+      "records": 1560,
+      "snapshotMs": 7.471399999999903,
+      "filterMs": 0.2314000000001215,
+      "editMs": 2.963999999999942,
+      "matched": 11
+    },
+    {
+      "size": "large",
+      "records": 10700,
+      "snapshotMs": 104.64719999999943,
+      "filterMs": 1.4607999999998356,
+      "editMs": 12.105999999999767,
+      "matched": 111
+    }
+  ]
+}

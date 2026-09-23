@@ -1,5 +1,8 @@
 # Implementation status
 
+## Windows authoring source checkpoint — 2026-09-22
+
+The native Manager/Administrator workspace now implements Company-scoped Work Areas, Chemical Products, Work Area Products, Workers, Work Area Assignments, SDS Verifications, HazCom Review Events, Training Events, managed local SDS drafts, Trash/restore, and existing trusted Company administration. Automated validation is recorded in [the authoring handoff](WINDOWS_AUTHORING_HANDOFF.md). Native authenticated acceptance is the next step after the source checkpoint. Publication is not exposed in this UI.
 ## Current scalable publication source checkpoint — 2026-09-22
 
 Schema 2 staged publication is implemented and emulator-verified for **Small, Medium, Large (2,000 SDS), and Stress (5,000 SDS)**, each through independent SQLite replication. Main now uses immutable manifests, bounded chunks, authenticated binary PDF uploads, progress/resume, sealed validation, a two-document final transaction and privileged abandoned-staging cleanup. The old numeric limits were not raised; schema 1 endpoints remain explicitly isolated for compatibility/regression tests. Existing Google sign-in, Account/entitlement/Membership/Company and SQLite foundations remain intact.

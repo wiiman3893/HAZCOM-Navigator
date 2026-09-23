@@ -28,3 +28,6 @@ Hazcom Navigator - Constellation Export/
 
 # Generated Tauri metadata
 apps/windows/src-tauri/gen/
+
+**/test-results/
+**/playwright-report/
