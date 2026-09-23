@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile,writeFile,mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {authoringService,summary,filterRows,validate,dateOnly,dueState} from '../src/index.js';
+import {authoringService,summary,filterRows,validate,dateOnly,dueState,localDate} from '../src/index.js';
 import {nodeSqlite,nodeFiles} from '../../sync/src/node.js';
 import {REPLICA_SCHEMA_SQL} from '../../sync/src/sqlite.js';
 import {buildPublication} from '../../sync/src/projection.js';
@@ -13,6 +13,11 @@ import {dummyPdf,fixture} from '../../sync/test/fixtures.mjs';
 const migration=await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8');
 const area=n=>({name:`Area ${n}`,location:'Building 1',poc_name:'Safety lead',poc_email:'safety@example.test',poc_phone_number:'+1 (555) 123-4567',description:'Local fixture'});
 const chemical=n=>({product_name:`Cleaner ${n}`,chemical_names:'Acetone',cas_numbers:'67-64-1',manufacturer:'Test manufacturer',sds_date:'2026-01-01'});
+test('Date-only authoring defaults use the local calendar day at the UTC boundary',()=>{
+ const original=process.env.TZ;
+ try{process.env.TZ='America/Chicago';assert.equal(localDate(new Date('2026-09-23T02:00:00Z')),'2026-09-22');}
+ finally{if(original===undefined)delete process.env.TZ;else process.env.TZ=original;}
+});
 async function setup(){const folder=await mkdtemp(path.join(tmpdir(),'hazcom-authoring-'));const sql=nodeSqlite(path.join(folder,'author.db'),REPLICA_SCHEMA_SQL+migration),files=await nodeFiles(path.join(folder,'attachments'));sql.db.prepare('INSERT INTO company(id,name,contact_email) VALUES (?,?,?)').run('company-a','Authoring Company','safety@example.test');sql.db.prepare('INSERT INTO company(id,name,contact_email) VALUES (?,?,?)').run('company-b','Other Company','other@example.test');let active='company-a',role='manager';const create=c=>authoringService({sql,files,companyId:c,authorize:async()=>({companyId:active,role,active:true}),today:()=> '2026-09-22'});return {sql,files,service:create('company-a'),other:create('company-b'),switchTo(c){active=c;},role(r){role=r;}};}
 
 test('Full authoring scenario: 3 areas, 10 Chemicals with SDS, 5 Workers, retraining, trash/restore and validated publication',async()=>{

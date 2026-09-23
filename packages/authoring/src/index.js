@@ -17,6 +17,7 @@ const config={
 const events=['sds_verification','hazcom_review','training_event'];
 const need=(value,message)=>{if(!value)throw Error(message);};
 export const stableId=value=>{need(typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value),'Invalid stable ID');return value;};
+export const localDate=(date=new Date())=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 export const dateOnly=value=>{need(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value,'Use a valid date (YYYY-MM-DD)');return value;};
 export function validate(kind,input){
  need(fields[kind],'Unknown authoring record');const row={};
@@ -58,7 +59,7 @@ export function filterRows(kind,rows,filter={}){
 export function summary(data){const active=k=>data[k].filter(r=>!r.deleted_at),a=active('work_area'),c=active('chemical_product'),assign=data.work_area_assignment.filter(r=>r.active);return {areas:a.length,chemicals:c.length,workers:active('worker').length,assignments:assign.length,sdsOverdue:c.filter(r=>r.status==='overdue').length,sdsApproaching:c.filter(r=>r.status==='approaching').length,sdsRequired:c.filter(r=>r.status==='required').length,reviewsOverdue:a.filter(r=>r.status==='overdue').length,reviewsApproaching:a.filter(r=>r.status==='approaching').length,reviewsRequired:a.filter(r=>r.status==='required').length,training:assign.filter(r=>r.status!=='current').length,missingSds:c.filter(r=>!r.hasSds).length};}
 
 /** All operations require live authority for the captured active Company. sql.batch must be atomic. */
-export function authoringService({sql,companyId,authorize,files,today=()=>new Date().toISOString().slice(0,10)}){
+export function authoringService({sql,companyId,authorize,files,today=localDate}){
  stableId(companyId);let tail=Promise.resolve();
  const locked=fn=>{const next=tail.then(fn);tail=next.catch(()=>{});return next;};
  const check=async(kind='work_area',verb='read')=>{const a=await authorize();need(a.companyId===companyId&&a.active&&['manager','administrator'].includes(a.role)&&findPermission(a.role,verb,kind),'Active Company authoring permission required');return a;};

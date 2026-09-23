@@ -1,11 +1,10 @@
 import {useEffect,useRef,useState} from 'react';
-import {fields,filterRows,summary} from '@hazcom/authoring';
+import {fields,filterRows,summary,localDate} from '@hazcom/authoring';
 
 export const navigation=['Management Home','Work Areas','Chemical Library','Workers','Assignments & Training','Reports & Export','Company & Access Administration'];
 type Props={company:{id:string;name:string;contact_email:string;role:string};open:()=>Promise<any>;administration?:{update:(name:string,email:string)=>Promise<void>;members:()=>Promise<any[]>;setMember:(value:any)=>Promise<void>}};
 const labels:Record<string,string>={name:'Name',location:'Location',poc_name:'POC name',poc_email:'POC email',poc_phone_number:'POC phone',description:'Description',product_name:'Product name',chemical_names:'Chemical names',cas_numbers:'CAS numbers',manufacturer:'Manufacturer',sds_date:'SDS date',email:'Email',phone:'Phone',quantity:'Quantity',storage_location:'Storage location',added_date:'Added date',assigned_date:'Assigned date',ended_date:'Ended date',verified_at:'Verification date',review_date:'Review date',training_date:'Training date',work_area_id:'Work Area',chemical_product_id:'Chemical Product',worker_id:'Worker',work_area_assignment_id:'Assignment'};
 const eventKinds=['sds_verification','hazcom_review','training_event'];
-const today=()=>new Date().toISOString().slice(0,10);
 const title=(r:any)=>r?.name??r?.product_name??r?.id??'Missing record';
 export default function AuthoringWorkspace({company,open,administration}:Props){
  const [service,setService]=useState<any>(null),[data,setData]=useState<any>(null),[screen,setScreen]=useState('Management Home'),[filter,setFilter]=useState<any>({}),[selected,setSelected]=useState<string|null>(null);
@@ -24,7 +23,7 @@ export default function AuthoringWorkspace({company,open,administration}:Props){
  const kind=screen==='Work Areas'?'work_area':screen==='Chemical Library'?'chemical_product':screen==='Workers'?'worker':'work_area_assignment';
  const records=data?filterRows(kind,data[kind],kind==='worker'?{...filter,workAreaId:''}:filter).filter((w:any)=>{if(kind!=='worker')return true;const rows=data.work_area_assignment.filter((a:any)=>a.worker_id===w.id&&a.active&&(!filter.workAreaId||a.work_area_id===filter.workAreaId));return (!filter.workAreaId||rows.length)&&(!filter.workerTraining||(filter.workerTraining==='assigned'?rows.length:rows.some((a:any)=>a.status!=='current')));}):[],record=data?.[kind].find((r:any)=>r.id===selected);
  const name=(k:string,id:string)=>title(data?.[k].find((r:any)=>r.id===id));
- function edit(k:string,row:any=null,defaults:any={}){setError('');setNotice('');setForm({kind:k,id:row?.id??crypto.randomUUID(),editing:!!row,values:row?{...row}:Object.fromEntries(fields[k as keyof typeof fields].map((key:string)=>[key,key.endsWith('_date')||key==='verified_at'?today():''])),...{defaults}});if(!row)setForm((f:any)=>({...f,values:{...f.values,ended_date:'',...defaults}}));}
+ function edit(k:string,row:any=null,defaults:any={}){setError('');setNotice('');setForm({kind:k,id:row?.id??crypto.randomUUID(),editing:!!row,values:row?{...row}:Object.fromEntries(fields[k as keyof typeof fields].map((key:string)=>[key,key.endsWith('_date')||key==='verified_at'?localDate():''])),...{defaults}});if(!row)setForm((f:any)=>({...f,values:{...f.values,ended_date:'',...defaults}}));}
  async function save(){await action(async()=>{if(form.kind==='company'){await administration!.update(form.values.name,form.values.email);}else if(form.kind==='membership'){await administration!.setMember({...form.values,active:form.values.active!=='false',workerId:form.values.workerId||null});setMembers(await administration!.members());}else if(form.editing)await service.update(form.kind,form.id,form.values);else await service.create(form.kind,form.values,form.id);setForm(null);});}
  const badge=(state:string)=><span className={`badge ${state}`}>{state==='approaching'?'Approaching due':state==='required'?'Required':state==='overdue'?'Overdue':'Current'}</span>;
  const eventButton=(k:string,parent:string,id:string)=><button disabled={busy||!!form} onClick={()=>edit(k,null,{[parent]:id})}>{k==='training_event'?'Record training':k==='hazcom_review'?'Record HAZCOM review':'Verify SDS current'}</button>;
