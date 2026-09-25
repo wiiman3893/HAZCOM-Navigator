@@ -1,0 +1,74 @@
+{
+  "executedAt": "2026-09-25T12:00:29.154Z",
+  "complete": true,
+  "expectedScales": [
+    "small"
+  ],
+  "passed": true,
+  "projectId": "demo-hazcom-navigator",
+  "node": "v24.18.0",
+  "limits": {
+    "chunkRecords": 100,
+    "filePlanRecords": 50,
+    "chunkBytes": 256000,
+    "manifestBytes": 512000,
+    "chunks": 1000,
+    "records": 100000,
+    "attachments": 20000,
+    "pdfBytes": 5242880
+  },
+  "results": [
+    {
+      "name": "Adversarial manifests/chunks/SDS, access revocation, restart resume and atomic visibility",
+      "result": "PASS"
+    },
+    {
+      "name": "small: full SQLite author -> staged Functions/Firestore/Storage -> independent replica",
+      "result": "PASS"
+    }
+  ],
+  "measurements": [
+    {
+      "size": "small",
+      "records": 140,
+      "chunks": 9,
+      "sds": 20,
+      "jsonBytes": 19515,
+      "manifestBytes": 2319,
+      "totalStagedJsonBytes": 26032,
+      "sdsBytes": 12130,
+      "projectionMs": 17.652900000000955,
+      "publicationMs": 4748.047100000011,
+      "chunkUploadMs": 1984.6589999999997,
+      "sdsUploadMs": 1168.2814000000071,
+      "validationMs": 936.3894,
+      "finalizationMs": 87.75209999999788,
+      "chunksUploaded": 9,
+      "filesUploaded": 20,
+      "validationWork": {
+        "recordReads": 160,
+        "referenceReads": 105,
+        "storageMetadataReads": 20
+      },
+      "replicationMs": 422.45560000000114,
+      "sdsDownloadMs": 246.20550000001094,
+      "importMs": 6.917000000001281,
+      "replicaDbBytes": 536576,
+      "requests": {
+        "callables": {
+          "beginStagedPublication": 1,
+          "getPublicationProgress": 2,
+          "stagePublicationChunk": 9,
+          "sealPublication": 1,
+          "validatePublicationPage": 3,
+          "finalizeStagedPublication": 1
+        },
+        "sdsUploads": 20,
+        "sdsDownloads": 20
+      },
+      "logicalFirestoreWrites": 217,
+      "logicalStorageOperations": 100,
+      "operationCountNote": "Logical operation estimates from the executed successful algorithm, excluding setup, retries, indexes, auth/security-rule reads and SDK internals. Storage: create + metadata update + two metadata reads + receiver download per file. Request counts and validation reads are observed."
+    }
+  ]
+}

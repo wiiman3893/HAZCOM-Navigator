@@ -1,5 +1,7 @@
 # Scalable staged publication — September 22, 2026
 
+**Windows UI update (September 25, 2026):** The native Reports & Export screen is now connected to the existing schema-2 service through a readiness/retry controller. Its local SDS hash check compares bytes with the authoring-time integrity record, and its current-revision display is confirmed from the Company pointer. See [Windows publication handoff](WINDOWS_PUBLICATION_HANDOFF.md). This is a local/emulator source update; schema-2 has not been deployed to the development Firebase project.
+
 This implementation builds on `f43f509bfefb544ef9122da8a33198a5e1a6ebf4`. Existing frozen/archive branches remain immutable. The application publisher now uses schema 2 staging; schema 1 endpoints remain explicitly isolated for development compatibility and regression tests. Authentication, subscriptions, Membership/Company semantics, the canonical SQLite schema and training-event reconciliation were not redesigned.
 
 ## Invariant and state machine

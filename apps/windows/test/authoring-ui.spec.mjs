@@ -26,3 +26,45 @@ test('Readable desktop layouts, invalid input retained and empty search states',
  await page.goto('/');for(const width of [1320,1000]){await page.setViewportSize({width,height:860});for(const name of ['Management Home','Work Areas','Chemical Library','Workers','Assignments & Training','Reports & Export','Company & Access Administration']){await page.getByRole('button',{name,exact:true}).click();await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);}}
  await page.getByRole('button',{name:'Chemical Library',exact:true}).click();await page.getByRole('button',{name:'Add chemical product'}).click();const form=page.getByRole('region',{name:'Record form'});await form.getByLabel('Product name').fill('Invalid CAS retained');await form.getByLabel('Manufacturer').fill('Test');await form.getByLabel('CAS numbers').fill('not-a-CAS');await form.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByRole('alert')).toContainText('CAS numbers');await expect(form.getByLabel('CAS numbers')).toHaveValue('not-a-CAS');await form.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByLabel('Search',{exact:true}).fill('no match deliberately');await expect(page.getByText('No records match. Create a record or clear filters.')).toBeVisible();
 });
+
+test('Paid Manager publishes a Company draft and sees later unpublished changes',async({page})=>{
+ await page.goto('/');
+ await page.getByRole('button',{name:'Chemical Library',exact:true}).click();
+ await page.getByLabel('Search',{exact:true}).fill('67-64-1');
+ await page.getByRole('button',{name:'View details'}).click();
+ await page.getByLabel('Choose / replace PDF').setInputFiles({name:'publication-synthetic.pdf',mimeType:'application/pdf',buffer:Buffer.from(dummyPdf('Publication UI'))});
+ await expect(page.getByText(/Current draft · publication-synthetic.pdf/)).toBeVisible();
+ await page.getByRole('button',{name:'Work Areas',exact:true}).click();
+ await page.getByLabel('Search',{exact:true}).fill('Maintenance');
+ await page.getByRole('button',{name:'View details'}).click();
+ await page.getByRole('button',{name:'Add Chemical to Work Area'}).click();
+ const form=page.getByRole('region',{name:'Record form'});
+ await form.getByRole('combobox',{name:'Chemical Product'}).selectOption('ui-chemical');
+ await form.getByLabel('Quantity').fill('2 bottles');
+ await form.getByLabel('Storage location').fill('Cabinet A');
+ await form.getByRole('button',{name:'Save',exact:true}).click();
+ await page.getByRole('button',{name:'Reports & Export',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Readiness: READY'})).toBeVisible();
+ await page.getByRole('button',{name:'Publish Company'}).click();
+ await expect(page.getByText('Publication completed. This is now the current published HazCom revision.')).toBeVisible();
+ await expect(page.getByText(/Current published revision 1/)).toBeVisible();
+ await page.getByRole('button',{name:'Work Areas',exact:true}).click();
+ await page.getByLabel('Search',{exact:true}).fill('Maintenance');
+ await page.getByRole('button',{name:'View details'}).click();
+ await page.getByRole('button',{name:'Edit',exact:true}).click();
+ await form.getByLabel('Location',{exact:true}).fill('Updated shop location');
+ await form.getByRole('button',{name:'Save',exact:true}).click();
+ await page.getByRole('button',{name:'Reports & Export',exact:true}).click();
+ await expect(page.getByText('Local changes have not yet been published.')).toBeVisible();
+});
+
+test('Publication gives visible Demo and grace reasons',async({page})=>{
+ await page.goto('/');
+ for(const [value,reason] of [['company-demo','current plan'],['pro-demo','current plan'],['grace','read/export period'],['expired','coverage is inactive']]){
+  await page.getByLabel('Test entitlement').selectOption(value);
+  await page.getByRole('button',{name:'Reports & Export',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Readiness: BLOCKING'})).toBeVisible();
+  await expect(page.getByText(new RegExp(reason))).toBeVisible();
+  await expect(page.getByRole('button',{name:'Publish Company'})).toBeDisabled();
+ }
+});

@@ -5,6 +5,7 @@ import { auth, db, configurationError, signIn, signOutAccount, loadAccount, call
 import { closeWorkspace } from './data/database';
 import { openAuthoring } from './data/authoring';
 import AuthoringWorkspace from './AuthoringWorkspace';
+import {windowsPublication} from './data/publication';
 
 
 
@@ -78,7 +79,7 @@ function AuthenticatedApp(){
 function Workspace({uid,company,error}:{uid:string;company:CompanyAccess;error:string}){
   const open=useCallback(()=>openAuthoring(uid,company.id),[uid,company.id]);
   if(company.role==='member')return <main><h1>Company member access</h1><p>Your membership is verified. The published safety-data reader is planned for a later update.</p></main>;
-  return <><AuthoringWorkspace company={company} open={open} administration={{
+  return <><AuthoringWorkspace company={company} open={open} publication={windowsPublication} administration={{
     update:async(name,email)=>{await call('updateCompany',{companyId:company.id,company:{name,contact_email:email}});await openAuthoring(uid,company.id);},
     members:async()=>{const rows=await getDocsFromServer(collection(db,'companies',company.id,'memberships'));return rows.docs.map(d=>d.data());},
     setMember:async(value)=>{await call('setMembership',{companyId:company.id,...value});}

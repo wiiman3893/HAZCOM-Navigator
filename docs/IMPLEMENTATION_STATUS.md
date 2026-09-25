@@ -1,5 +1,9 @@
 # Implementation status
 
+## Windows schema-2 publication UI — local/emulator checkpoint
+
+Reports & Export now has readiness, Publish/Retry, staged progress, current revision and local-unpublished-change status for an authorized Manager/Administrator. Readiness checks the Company-scoped projection, schema-2 plan, capability/role, cloud Company context and locally recorded SDS SHA-256. The existing publisher remains authoritative for staging, finalization and idempotent resume. Controller and browser acceptance tests use synthetic data; schema-2 backend validation uses Firebase emulators. See [Windows publication handoff](WINDOWS_PUBLICATION_HANDOFF.md). This source has **not** been deployed to the development Firebase project.
+
 ## Commercial entitlement V1 source checkpoint — local/emulator only
 
 The canonical [commercial contract](COMMERCIAL_CONTRACT_V1.md) and [entitlement handoff](ENTITLEMENT_ENGINE_HANDOFF.md) describe a validated Demo/capability foundation. Account bootstrap, Demo limits/switching, trusted publication gates, local authoring limits, synthetic billing events, Pro-seat inheritance, takeover, backup-email verification with a mock outbox, emulator-only cleanup, and versioned local backup round-trip have automated coverage. A Windows service exports that backup during paid grace/export. Production email/cloud delivery, scheduled cleanup, native restore, and real billing integration remain future work. The development Firebase project was not deployed.
@@ -31,7 +35,7 @@ A native Manager acceptance pass created, edited, persisted, trashed/restored, a
 
 See [Windows authoring handoff](WINDOWS_AUTHORING_HANDOFF.md) and [Windows authentication handoff](WINDOWS_AUTH_HANDOFF.md).
 
-The current Reports & Export screen does **not** yet expose publication controls. Connecting the authoring workspace to the already-implemented scalable publication service is the next primary product slice.
+The Reports & Export publication controls are now implemented in source; real-cloud deployment and acceptance remain separate work.
 
 ## Scalable publication and replication
 

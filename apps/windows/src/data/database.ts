@@ -1,5 +1,7 @@
 import Database from '@tauri-apps/plugin-sql';
 import { verifyCompany, type CompanyAccess } from '../auth/firebase';
+import {verifyWindowsSdsIntegrity} from './publication-integrity';
+import {buildPublication} from '@hazcom/sync';
 
 const DATABASE_URL = 'sqlite:hazcom-navigator.db';
 let dbPromise: Promise<Database> | null = null;
@@ -55,6 +57,7 @@ export async function buildWindowsPublication(uid:string,companyId:string,files:
   const access=await verifyCompany(uid,companyId);
   if(access.role==='member')throw Error('Company authoring access required.');
   const db=await openDatabase();
-  const {buildPublication}=await import('@hazcom/sync');
-  return buildPublication({select:(sql:string,values:unknown[])=>db.select(sql,values)},companyId,files);
+  const projection=await buildPublication({select:(sql:string,values:unknown[])=>db.select(sql,values)},companyId,files);
+  await verifyWindowsSdsIntegrity(projection.attachments,(sql,values)=>db.select(sql,values));
+  return projection;
 }

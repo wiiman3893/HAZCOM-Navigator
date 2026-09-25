@@ -23,10 +23,10 @@ export async function publish({projection,revisionId,parentRevisionId=null,trans
   let status=begin.status;
   if(status==='staging') {
     const completed=async kind=>{const ids=new Set();let afterId=null;do{const page=await invoke('getPublicationProgress',{...context,kind,afterId});demand(page.manifestHash===plan.manifestHash,'Resume manifest mismatch');page.completedIds.forEach(id=>ids.add(id));afterId=page.afterId;}while(afterId);return ids;};
-    const chunkIds=await completed('chunks');let start=performance.now();
+    const chunkIds=await completed('chunks');onProgress({phase:'chunks',completed:chunkIds.size,total:plan.chunks.length});let start=performance.now();
     await parallel(plan.chunks.filter(c=>!chunkIds.has(c.descriptor.chunkId)),concurrency,async c=>{await invoke('stagePublicationChunk',{...context,manifestHash:plan.manifestHash,chunkId:c.descriptor.chunkId,rows:c.rows});metrics.chunksUploaded++;onProgress({phase:'chunks',completed:chunkIds.size+metrics.chunksUploaded,total:plan.chunks.length});});
     metrics.chunkUploadMs=performance.now()-start;
-    const fileIds=await completed('attachments');start=performance.now();
+    const fileIds=await completed('attachments');onProgress({phase:'sds',completed:fileIds.size,total:attachments.length});start=performance.now();
     await parallel(attachments.filter(a=>!fileIds.has(a.attachmentId)),concurrency,async a=>{
       cancelled();const bytes=await files.read(a.localPath);pdf(bytes);
       demand(bytes.length===a.sizeBytes&&await sha256(bytes)===a.sha256,'SDS changed after projection; use a new revision');
@@ -44,6 +44,7 @@ export async function publish({projection,revisionId,parentRevisionId=null,trans
     onProgress({phase:'validation',completed:page.validationCursor,total:plan.chunks.length});
   }
   metrics.validationMs=performance.now()-start;start=performance.now();
+  onProgress({phase:'finalizing'});
   const result=await invoke('finalizeStagedPublication',{...context,manifestHash:plan.manifestHash});metrics.finalizationMs=performance.now()-start;
   await journal.put(key,{...state,status:'published',result});
   return {...result,metrics};

@@ -28,8 +28,9 @@ export async function buildPublication(sql,companyId,files) {
     if(raw.slotKey!=='sds') continue;
     stableId(raw.attachmentId); demand(!owners.has(raw.ownerId),'Multiple SDS attachments for Product'); owners.add(raw.ownerId);
     demand(dataset.chemicalProducts.some(p=>p.id===raw.ownerId),'SDS owner outside Company');
-    const bytes=await files.read(raw.localPath); pdf(bytes);
-    demand(raw.declaredSize==null || raw.declaredSize===bytes.length,'SDS declared size mismatch');
+    let bytes;try{bytes=await files.read(raw.localPath);}catch(error){throw Error(`SDS ${raw.attachmentId} for Chemical Product ${raw.ownerId} cannot be read: ${error instanceof Error?error.message:String(error)}`);}
+    try{pdf(bytes);}catch(error){throw Error(`SDS ${raw.attachmentId} for Chemical Product ${raw.ownerId}: ${error instanceof Error?error.message:String(error)}`);}
+    demand(raw.declaredSize==null || raw.declaredSize===bytes.length,`SDS declared size mismatch: ${raw.attachmentId} for Chemical Product ${raw.ownerId}`);
     attachments.push({attachmentId:raw.attachmentId,ownerType:'chemical_product',ownerId:raw.ownerId,slotKey:'sds',localPath:raw.localPath,sha256:await sha256(bytes),sizeBytes:bytes.length});
   }
   const logical={company:snapshot.company,dataset,attachments:attachments.map(({localPath,...a})=>a)};
