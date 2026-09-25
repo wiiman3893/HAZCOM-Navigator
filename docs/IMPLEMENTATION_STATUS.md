@@ -1,61 +1,134 @@
 # Implementation status
 
-## Windows authoring source checkpoint — 2026-09-22
+## Current Windows authoring checkpoint
 
-The native Manager/Administrator workspace now implements Company-scoped Work Areas, Chemical Products, Work Area Products, Workers, Work Area Assignments, SDS Verifications, HazCom Review Events, Training Events, managed local SDS drafts, Trash/restore, and existing trusted Company administration. Automated validation is recorded in [the authoring handoff](WINDOWS_AUTHORING_HANDOFF.md). Native authenticated acceptance is the next step after the source checkpoint. Publication is not exposed in this UI.
-## Current scalable publication source checkpoint — 2026-09-22
+HazCom Navigator now has a native Windows Manager/Administrator authoring workspace backed by the existing Company-scoped SQLite model.
 
-Schema 2 staged publication is implemented and emulator-verified for **Small, Medium, Large (2,000 SDS), and Stress (5,000 SDS)**, each through independent SQLite replication. Main now uses immutable manifests, bounded chunks, authenticated binary PDF uploads, progress/resume, sealed validation, a two-document final transaction and privileged abandoned-staging cleanup. The old numeric limits were not raised; schema 1 endpoints remain explicitly isolated for compatibility/regression tests. Existing Google sign-in, Account/entitlement/Membership/Company and SQLite foundations remain intact.
+Implemented and validated through the native app:
 
-See [scalable publication handoff](SCALABLE_PUBLICATION_HANDOFF.md), [measured results](scalable-publication-results.json), and the security audit. The new permanent branch is `frozen/scalable-publication-proof-2026-09-22`; never repoint it or any older frozen ref. **This is a validated source/emulator milestone, not a new cloud deployment.** The development cloud still has its earlier deployed Functions/rules until a coordinated deployment of the new Functions, indexes, rules and clients is performed.
+- Google sign-in and authenticated Account -> entitlement -> Membership -> active Company front door
+- Company-scoped Work Areas
+- Chemical Products
+- Work Area Products
+- Workers
+- Work Area Assignments
+- managed local SDS draft PDFs with SHA-256/size integrity metadata
+- append-only SDS Verifications
+- append-only HazCom Review Events
+- append-only Training Events
+- Trash/restore
+- trusted Company administration boundaries
+- persistence across application restart
+- local-calendar date defaults for Windows authoring forms
 
-The sections below retain historical foundation/checkpoint details. Their 350-record/3-MB/100-attachment publication description applies to schema 1 only; current client publishing uses schema 2.
+A native Manager acceptance pass created, edited, persisted, trashed/restored, and re-opened representative HazCom records and an SDS through the actual Windows application. The validated authoring source including the local-date correction is preserved at:
 
+`frozen/windows-authoring-validated-2026-09-22`
 
-## Foundation implemented
+See [Windows authoring handoff](WINDOWS_AUTHORING_HANDOFF.md) and [Windows authentication handoff](WINDOWS_AUTH_HANDOFF.md).
 
-- Canonical domain types and stable relationship IDs
-- Role/permission definitions and authorization helper contracts
-- Customer and Professional plan definitions
-- Derived HazCom review, SDS verification, and assignment training status logic
-- Assignment/product-added training requirement behavior
-- Publish-revision manifest contract
-- Verbatim Constellation SQLite schema plus derived non-authoritative views
-- Windows Tauri shell with authenticated Account/entitlement/membership entry, system-browser Google sign-in, Company selection/creation, and scoped SQLite dashboard queries after live authorization
-- Mobile Capacitor shell plus a separate account/Company-scoped published-replica service
-- Firebase development project `hazcom-navigator-dev` with Google Auth, Firestore and FCM configured
-- Firestore tenant/security rules deployed to the development project
-- Trusted callable backend for Account bootstrap, entitlement-sensitive Company creation, Company settings, memberships, coverage, append-only training, and immutable revision publication
-- SDS Storage rules and content-addressed upload path implemented and emulator-tested
-- Development-only IAM/ADC entitlement utility and Google sign-in bootstrap harness
-- Core automated business-rule tests
-- SQLite migration/relationship/foreign-key/derived-view validation test
-- Firebase Auth/Firestore/Storage emulator security suite (10/10 at the recorded checkpoint)
+The current Reports & Export screen does **not** yet expose publication controls. Connecting the authoring workspace to the already-implemented scalable publication service is the next primary product slice.
+
+## Scalable publication and replication
+
+Schema 2 staged publication is implemented and emulator-verified through independent SQLite replication.
+
+Verified fixtures:
+
+- Small: 140 records / 20 SDS files
+- Medium: 1,560 records / 250 SDS files
+- Large: 10,700 records / 2,000 SDS files
+- Stress: 28,000 records / 5,000 SDS files
+
+The schema 2 pipeline uses immutable hashed manifests, bounded deterministic chunks, authenticated binary SDS uploads, resumable progress, sealed completeness/relationship validation, a small final transaction that atomically switches the Company current revision, and privileged abandoned-staging cleanup.
+
+An incomplete revision never becomes current. Receiving clients build a separate temporary SQLite replica, verify revision/SDS integrity, and activate it only after the import succeeds. Member privacy and separate append-only Training Event reconciliation are preserved.
+
+See [scalable publication handoff](SCALABLE_PUBLICATION_HANDOFF.md), [publication/sync handoff](PUBLICATION_SYNC_HANDOFF.md), and [measured results](scalable-publication-results.json).
+
+The scalable source checkpoint is preserved at:
+
+`frozen/scalable-publication-proof-2026-09-22`
+
+**Important deployment boundary:** schema 2 is validated in source/emulators but is not yet the coordinated production/dev-cloud deployment. The development Firebase project still has the earlier deployed Functions/rules until schema 2 Functions, indexes, rules, and clients are intentionally deployed together.
 
 ## Firebase cloud checkpoint
 
-Blaze is enabled for hazcom-navigator-dev. The private US-CENTRAL1 bucket, ten Node 22 Functions and both rulesets are deployed. Cross-service Storage IAM and development browser CORS are configured. Real Google-auth and SDS smoke tests passed, including token-free authenticated download and denied unauthorized/direct-write access. See [Firebase handoff](../firebase/CODEX_HANDOFF.md) and [validation](../firebase/VALIDATION.md).
+Development project:
 
-The Windows entry flow is implemented with a development-only system-browser relay. SQLite opens only after live Company authorization; member accounts do not open the local authoring dataset. Production OAuth/PKCE/return handling, secure persistent sessions, offline leases and full native acceptance testing remain separately tracked in Firebase documentation.
+`hazcom-navigator-dev`
 
-The current working source is preserved at `frozen/working-google-auth-2026-09-21` (`64b65c9`). All requested committed-source tests/builds passed. The user confirmed the real native Google return; SQLite integrity, migrations and persisted Company headers were independently verified. Interactive logout/restart/cancellation acceptance was limited by a desktop app-approval timeout. See [Windows auth handoff](WINDOWS_AUTH_HANDOFF.md) for the exact mechanisms and ranked technical hurdles. No auth redesign was made after preservation.
+Verified cloud foundation:
+
+- Blaze enabled
+- Google Authentication enabled
+- Firestore configured in `us-central1`
+- private Cloud Storage bucket
+- FCM enabled
+- ten Node 22 Functions from the earlier backend deployment
+- Firestore and Storage Rules deployed
+- cross-service Storage membership authorization configured
+- real Google authentication smoke test passed
+- real SDS upload/download test passed
+- unauthorized/direct-write SDS access denied
+- published SDS download did not leave a persistent Firebase Storage download token
+
+See [Firebase handoff](../firebase/CODEX_HANDOFF.md) and [Firebase validation](../firebase/VALIDATION.md).
+
+## Authentication boundary
+
+The current Windows development login uses the system browser and a one-use loopback callback into the Tauri application. The working development flow is proven.
+
+Current limitations:
+
+- Firebase session persistence is intentionally in-memory; restarting the app requires login again
+- the current loopback relay is a development implementation, not the final packaged production OAuth/session design
+- production OAuth/PKCE/return handling and secure persistent/offline authorization remain future work
+- Member published-data screens are not yet implemented in the Windows authoring client
+
+SQLite opens only after live Firebase Company authorization. Member accounts do not open the Manager/Administrator authoring workspace.
+
+## Core foundation
+
+The repository also includes:
+
+- canonical domain types and stable relationship IDs
+- role/capability definitions
+- Customer and Professional entitlement definitions
+- derived review/SDS/training status logic
+- assignment/product-added training requirement behavior
+- Constellation-derived SQLite schema and derived views
+- Company-scoped authoring repository/service layer
+- deterministic SQLite -> publication serializer
+- independent published-replica importer
+- Mobile Capacitor shell and replica foundation
+- Firebase emulator security/integration tests
+- SQLite migration/integrity/relationship tests
+- scalable publication/replication harnesses
+- Windows authoring tests
 
 ## Next implementation slices
 
-1. Finalize production desktop OAuth and secure session/offline policy. Development cloud provisioning and smoke tests are complete.
-2. Extend native authentication acceptance tests and implement published member read screens. The development front door is wired.
-3. Implement Windows CRUD repositories/forms for Work Areas, Workers, Chemical Products, Work Area Products, and Work Area Assignments.
-4. Coordinate schema 2 Functions/rules/index/client deployment, schedule staged cleanup, and later add optional publication UI around the validated service.
-5. Exercise the completed mobile SQLite replica adapter on physical devices and add authorized read screens.
-6. OCR/extraction review workflow on Windows.
-7. Reporting/PDF/handoff package generation.
-8. Billing-provider integration once the processor is selected.
+1. **Wire Windows Publish UI to schema 2.** Add publication readiness validation, Publish/progress/retry/status behavior, and confirmation of the resulting current revision using the already-validated scalable publication service.
+2. **Coordinate schema 2 cloud deployment.** Deploy the new Functions, indexes, rules and compatible clients together; configure staged cleanup scheduling/quotas and perform a real-cloud scalable publication smoke test.
+3. **Exercise the mobile/published-member path on physical devices.** Validate the existing replica adapter and build authorized published-data screens.
+4. **Harden production Windows authentication/session behavior.** Replace the development-only auth boundary with the approved packaged OAuth/session strategy and define the offline entitlement policy.
+5. **Build SDS ingestion/OCR review workflow.**
+6. **Build reporting/export/handoff outputs.**
+7. **Integrate the eventual billing provider and webhook lifecycle.**
 
-The development Firebase project is hazcom-navigator-dev. Google Authentication, Firestore in us-central1, Firestore rules/indexes and FCM are configured. Blaze, Storage and all ten deployed Functions are verified, including real-cloud Google/SDS checks. The trusted backend now supports Account bootstrap, entitlement-sensitive Company creation, roles/memberships, coverage, explicit immutable publication, SDS uploads and member self-training. See [Firebase setup and contracts](../firebase/README.md). The payment processor, OCR engine and canonical Company/SDS retention period remain undecided.
+## Frozen recovery checkpoints
 
+Existing frozen/archive branches are recovery points and must not be repointed.
 
-## Publication/replication proof — September 21, 2026
+Important checkpoints include:
 
-The deterministic Company-scoped Windows SQLite serializer, durable publication orchestration, authorized receiver, atomic independent SQLite replacement, SDS verification and separate Training Event reconciliation are implemented in `@hazcom/sync`. A real callable emulator harness proves Small Company publication, clean Device B import, later revisions, interrupted/failed imports, privacy enforcement and training reconciliation. Existing Firebase server code/rules and limits are unchanged; no cloud deployment was needed.
+- `archive/pre-local-working-import-2026-09-21`
+- `frozen/working-google-auth-2026-09-21`
+- `frozen/authenticated-front-door-2026-09-21`
+- `frozen/publication-replication-proof-2026-09-21`
+- `frozen/scalable-publication-proof-2026-09-22`
+- `frozen/windows-authoring-core-2026-09-22`
+- `frozen/windows-authoring-validated-2026-09-22`
 
-Small is 140 records/20 SDS files. Medium (1,560/250) and Large (10,700/2,000) are rejected by the unchanged 350-record/100-attachment limits, while local SQLite import benchmarks succeed. Exact JSON/PDF boundaries are also executable tests. See [publication/sync handoff](PUBLICATION_SYNC_HANDOFF.md) for APIs, test commands, measurements, failure recovery, platform acceptance limits and the proposed scalable publisher. The new permanent checkpoint is `frozen/publication-replication-proof-2026-09-21`; existing frozen/archive refs must not be moved.
+The older `frozen/windows-authoring-core-2026-09-22` checkpoint intentionally predates the local-calendar date correction. The validated authoring checkpoint above includes that fix.
