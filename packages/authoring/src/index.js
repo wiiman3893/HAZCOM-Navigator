@@ -1,4 +1,4 @@
-import {RELATIONSHIP_IDS,verificationDue,nextReviewDue,trainingStatus,latestDate,findPermission} from '@hazcom/core';
+import {RELATIONSHIP_IDS,verificationDue,nextReviewDue,trainingStatus,latestDate,findPermission,mayCreateWithinLimit} from '@hazcom/core';
 
 export const fields={
  work_area:['name','location','poc_name','poc_email','poc_phone_number','description'],
@@ -64,6 +64,14 @@ export function authoringService({sql,companyId,authorize,files,today=localDate}
  const locked=fn=>{const next=tail.then(fn);tail=next.catch(()=>{});return next;};
  const check=async(kind='work_area',verb='read')=>{const a=await authorize();need(a.companyId===companyId&&a.active&&['manager','administrator'].includes(a.role)&&findPermission(a.role,verb,kind),'Active Company authoring permission required');return a;};
  const list=async kind=>{const [parent,,link]=config[kind];return sql.select(`SELECT e.*,o.${parent}_id${link?`,l.${link}_id`:''} FROM ${kind} e ${joins(kind)} WHERE ${scope(kind)} ORDER BY e.id`,[companyId]);};
+ const creationLimit=async(kind,authority)=>{
+  const key={work_area:'maxWorkAreasPerCompany',chemical_product:'maxChemicalProductsPerCompany',worker:'maxWorkersPerCompany'}[kind];
+  if(!key||!authority.capabilities)return;
+  const limit=authority.capabilities[key];
+  need(limit===null||(Number.isInteger(limit)&&limit>=0),'Invalid commercial limit');
+  const active=(await list(kind)).filter(row=>!row.deleted_at).length;
+  need(mayCreateWithinLimit(limit,active),`${kind.replaceAll('_',' ')} limit reached for this Company`);
+ };
  const get=async(kind,id,active=true)=>{stableId(id);need(config[kind],'Unknown record');const [parent,,link]=config[kind];const rows=await sql.select(`SELECT e.*,o.${parent}_id${link?`,l.${link}_id`:''} FROM ${kind} e ${joins(kind)} WHERE ${scope(kind)} AND e.id=?`,[companyId,id]);need(rows.length===1&&(!active||!rows[0].deleted_at),'Record not available in this Company');return rows[0];};
  const version=async()=>{await sql.batch([statement('INSERT OR IGNORE INTO authoring_versions(company_id) VALUES (?)',[companyId])]);return (await sql.select('SELECT version FROM authoring_versions WHERE company_id=?',[companyId]))[0].version;};
  const commit=async(v,kind,id,action,changes,statements)=>{
@@ -75,8 +83,9 @@ export function authoringService({sql,companyId,authorize,files,today=localDate}
  const trigger=(area,date)=>statement(`UPDATE work_area_assignment SET training_required_since=? WHERE deleted_at IS NULL AND (ended_date IS NULL OR ended_date>?) AND id IN (SELECT child_id FROM work_area_assignment__ownership WHERE work_area_id=?)`,[date,today(),area]);
  const api={
   async snapshot(){return locked(async()=>{await check();const data={companyId};for(const kind of Object.keys(config))data[kind]=await list(kind);data.attachments=await sql.select("SELECT a.*,i.sha256 FROM dm_attachments a LEFT JOIN authoring_sds_integrity i ON i.attachment_id=a.id JOIN chemical_product__ownership o ON o.child_id=a.owner_id WHERE a.owner_type='chemical_product' AND o.company_id=? ORDER BY a.created_at DESC,a.id",[companyId]);data.activity=await sql.select("SELECT * FROM dm_change_history WHERE json_extract(changes_json,'$.companyId')=? ORDER BY changed_at DESC,id DESC LIMIT 20",[companyId]);await check();return decorate(data,today());});},
-  async create(kind,input,id=crypto.randomUUID()){return locked(async()=>{await check(kind,'create');stableId(id);const row=validate(kind,input),v=await version();await relations(kind,input);await conflict(kind,input,id);
+  async create(kind,input,id=crypto.randomUUID()){return locked(async()=>{const authority=await check(kind,'create');stableId(id);const row=validate(kind,input),v=await version();await relations(kind,input);await conflict(kind,input,id);
    const existing=await sql.select(`SELECT id FROM ${kind} WHERE id=?`,[id]);if(existing.length){const old=await get(kind,id,false);need(Object.entries(row).every(([k,val])=>old[k]===val)&&config[kind].filter((_,i)=>i===0||i===2).every(p=>p==='company'||old[`${p}_id`]===input[`${p}_id`]),'ID already belongs to different data');return id;}
+   await creationLimit(kind,authority);
    if(events.includes(kind)){const d=row[fields[kind][0]];need(d<=today(),'Completion cannot be dated in the future');if(kind==='training_event'){const assignment=await get('work_area_assignment',input.work_area_assignment_id);need(d>=assignment.assigned_date&&(!assignment.ended_date||d<=assignment.ended_date),'Training date must fall within the assignment');}}
    if(kind==='work_area_assignment')row.training_required_since=row.assigned_date;
    const [parent,relation,link,table]=config[kind],statements=[insert(kind,{id,...row}),insert(`${kind}__ownership`,{id:crypto.randomUUID(),child_id:id,relationship_id:RELATIONSHIP_IDS[relation],[`${parent}_id`]:parent==='company'?companyId:input[`${parent}_id`]})];
@@ -87,7 +96,7 @@ export function authoringService({sql,companyId,authorize,files,today=localDate}
    if(kind==='work_area_product')need(row.added_date===old.added_date,'Added date is historical; remove and re-add the product');
    if(kind==='work_area_assignment'){need(row.assigned_date===old.assigned_date,'Assigned date is historical');if(row.ended_date){const history=await list('training_event');need(history.filter(e=>e.work_area_assignment_id===id).every(e=>e.training_date<=row.ended_date),'End date precedes recorded training');}await conflict(kind,{...old,...row},id);}
    await commit(v,kind,id,'update',{before:old,after:row},[statement(`UPDATE ${kind} SET ${Object.keys(row).map(k=>`${k}=?`).join(',')} WHERE id=?`,[...Object.values(row),id])]);});},
-  async trash(kind,id,restore=false){return locked(async()=>{await check(kind,restore?'update':'delete');need(!events.includes(kind),'Historical events are append-only');const v=await version(),old=await get(kind,id,false);if(Boolean(old.deleted_at)!==restore)return; if(restore){await relations(kind,old);await conflict(kind,old,id);}const statements=[statement(`UPDATE ${kind} SET deleted_at=? WHERE id=?`,[restore?null:new Date().toISOString(),id])];
+  async trash(kind,id,restore=false){return locked(async()=>{const authority=await check(kind,restore?'update':'delete');need(!events.includes(kind),'Historical events are append-only');const v=await version(),old=await get(kind,id,false);if(Boolean(old.deleted_at)!==restore)return; if(restore){await creationLimit(kind,authority);await relations(kind,old);await conflict(kind,old,id);}const statements=[statement(`UPDATE ${kind} SET deleted_at=? WHERE id=?`,[restore?null:new Date().toISOString(),id])];
    if(!restore){
     if(kind==='chemical_product')statements.push(statement("UPDATE work_area_product SET deleted_at=? WHERE deleted_at IS NULL AND id IN (SELECT work_area_product_id FROM rel_chemical_product_work_area_product_9d42d6cd WHERE chemical_product_id=?)",[new Date().toISOString(),id]));
     if(kind==='worker')statements.push(statement("UPDATE work_area_assignment SET deleted_at=? WHERE deleted_at IS NULL AND id IN (SELECT work_area_assignment_id FROM rel_worker_work_area_assignment_d30ac2b9 WHERE worker_id=?)",[new Date().toISOString(),id]));

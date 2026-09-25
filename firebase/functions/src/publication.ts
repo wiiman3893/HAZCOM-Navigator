@@ -4,6 +4,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { db, identity, membership, coverage, denied } from './access.js';
 import { id, object, keys, dataset, fail, text } from './validation.js';
+import {enforcePublicationLimits,resolveCommercial} from '@hazcom/core';
 
 const options = { region:'us-central1', maxInstances:3, memory:'512MiB' as const, timeoutSeconds:120 };
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
@@ -18,7 +19,7 @@ export const beginPublication = onCall(options, async request => {
   const companyId=id(input.companyId), revisionId=id(input.revisionId);
   const parentRevisionId=input.parentRevisionId == null ? null : id(input.parentRevisionId);
   return db.runTransaction(async tx => {
-    const {company} = await membership(tx,uid,companyId,['administrator','manager']); await coverage(tx,companyId);
+    const {company} = await membership(tx,uid,companyId,['administrator','manager']); await coverage(tx,companyId,'canPublish');
     const ref=revisionRef(companyId,revisionId), previous=await tx.get(ref);
     if (previous.exists) {
       if (previous.get('schemaVersion') != null && previous.get('schemaVersion') !== 1) fail('Use schema v2 publication endpoints.');
@@ -41,7 +42,7 @@ export const uploadPublicationSds = onCall(options, async request => {
   if (bytes.length > 5*1024*1024 || bytes.subarray(0,5).toString() !== '%PDF-' || bytes.toString('base64') !== encoded) fail('Expected a PDF no larger than 5 MiB.');
   const sha256=hash(bytes), ref=revisionRef(companyId,revisionId), attachmentRef=ref.collection('attachments').doc(attachmentId);
   await db.runTransaction(async tx=> {
-    await membership(tx,uid,companyId,['administrator','manager']); await coverage(tx,companyId);
+    await membership(tx,uid,companyId,['administrator','manager']); await coverage(tx,companyId,'canPublish');
     pending((await tx.get(ref)).data(),uid);
     const existing=await tx.get(attachmentRef);
     if (existing.exists && (existing.get('sha256') !== sha256 || existing.get('ownerId') !== chemicalProductId)) throw new HttpsError('already-exists','Attachment ID is immutable.');
@@ -62,7 +63,7 @@ export const uploadPublicationSds = onCall(options, async request => {
   if (metadata.metadata?.firebaseStorageDownloadTokens) throw new HttpsError('internal','SDS download-token removal could not be verified.');
   const attachment={attachmentId,ownerType:'chemical_product',ownerId:chemicalProductId,slotKey:'sds',relativePath,sha256,sizeBytes:bytes.length,published:false};
   await db.runTransaction(async tx=> {
-    await membership(tx,uid,companyId,['administrator','manager']); await coverage(tx,companyId);
+    await membership(tx,uid,companyId,['administrator','manager']); await coverage(tx,companyId,'canPublish');
     pending((await tx.get(ref)).data(),uid);
     const existing=await tx.get(attachmentRef);
     if (existing.exists) {
@@ -80,7 +81,9 @@ export const finalizePublication = onCall(options, async request => {
   if (new Set(attachmentIds).size !== attachmentIds.length) fail('Duplicate attachment IDs.');
   const payloadHash=hash(JSON.stringify({rows,attachmentIds:[...attachmentIds].sort()}));
   return db.runTransaction(async tx=> {
-    const {company}=await membership(tx,uid,companyId,['administrator','manager']); await coverage(tx,companyId);
+    const {company}=await membership(tx,uid,companyId,['administrator','manager']);
+    const subscription=await coverage(tx,companyId,'canPublish');
+    enforcePublicationLimits(resolveCommercial(subscription.data()).capabilities,Object.fromEntries(Object.entries(rows).map(([kind,records])=>[kind,records.length])));
     const ref=revisionRef(companyId,revisionId), revision=await tx.get(ref);
     if (revision.get('schemaVersion') != null && revision.get('schemaVersion') !== 1) fail('Use schema v2 publication endpoints.');
     if (revision.get('status') === 'published') {

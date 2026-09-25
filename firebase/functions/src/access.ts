@@ -3,6 +3,7 @@ import { getFirestore, Timestamp, type Transaction } from 'firebase-admin/firest
 import { getAuth } from 'firebase-admin/auth';
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { role, type Role } from './validation.js';
+import { resolveCommercial, type Capabilities } from '@hazcom/core';
 
 initializeApp();
 export const db = getFirestore();
@@ -18,10 +19,7 @@ export async function identity(request: CallableRequest): Promise<string> {
   return user.uid;
 }
 export function canAuthor(entitlement: Record<string, any> | undefined, now = Date.now()): boolean {
-  if (!entitlement || !['customer','professional'].includes(entitlement.plan) || !['active','grace'].includes(entitlement.status)) return false;
-  const end = entitlement.validUntil instanceof Timestamp ? entitlement.validUntil.toMillis() : NaN;
-  const grace = entitlement.graceUntil instanceof Timestamp ? entitlement.graceUntil.toMillis() : NaN;
-  return Number.isFinite(end) && Number.isFinite(grace) && grace >= end && grace <= end + GRACE_MS && now < grace;
+  return resolveCommercial(entitlement,now).capabilities.canAuthor;
 }
 export async function membership(tx: Transaction, uid: string, companyId: string, allowed: readonly Role[] = ['administrator','manager','member']) {
   const [company, member] = await Promise.all([
@@ -30,10 +28,15 @@ export async function membership(tx: Transaction, uid: string, companyId: string
   if (!company.exists || company.get('active') !== true || !member.exists || member.get('active') !== true || !allowed.includes(role(member.get('role')))) denied('Company membership does not permit this operation.');
   return { company, member };
 }
-export async function coverage(tx: Transaction, companyId: string) {
+export async function coverage(tx: Transaction, companyId: string, capability: keyof Capabilities = 'canAuthor') {
   const cover = await tx.get(db.doc(`companies/${companyId}/coverage/current`));
   if (!cover.exists) denied('Company has no subscription coverage.');
+  if(cover.get('state')==='ending'&&capability!=='canReadPublished'&&capability!=='canExportBackup')denied('Company coverage is ending; authoring is disabled.');
   const subscription = await tx.get(db.doc(`subscriptions/${cover.get('accountId')}`));
-  if (!canAuthor(subscription.data())) denied('Company coverage is not active or within the 14-day grace period.');
+  const resolved = resolveCommercial(subscription.data());
+  if (resolved.capabilities[capability] !== true) denied(`Company coverage lacks ${capability}.`);
+  if (resolved.plan === 'demo' && resolved.demoType === 'company' && subscription.get('selectedDemoCompanyId') !== companyId) denied('This Company is parked in Company Demo.');
+  const covered=subscription.get('coveredCompanyIds');
+  if(cover.get('state')!=='ending'&&Array.isArray(covered)&&!covered.includes(companyId))denied('Company is not covered by this subscription.');
   return subscription;
 }

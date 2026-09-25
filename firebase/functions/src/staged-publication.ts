@@ -4,6 +4,7 @@ import {onCall,onRequest,HttpsError} from 'firebase-functions/v2/https';
 import {db,auth,identity,membership,coverage,denied} from './access.js';
 import {object,keys,id,schemas} from './validation.js';
 import {STAGED_LIMITS,assert,manifest,hash,bytesHash,chunkRows,descriptor,attachment,storagePath,entityKinds} from './staged-contract.js';
+import {enforcePublicationLimits,resolveCommercial} from '@hazcom/core';
 
 const options={region:'us-central1',maxInstances:3,memory:'512MiB' as const,timeoutSeconds:120};
 const revisionRef=(c:string,r:string)=>db.doc(`companies/${c}/publishedRevisions/${r}`);
@@ -12,7 +13,7 @@ function inputContext(value:unknown,extra:string[]=[]) {
   return {input,companyId:id(input.companyId),revisionId:id(input.revisionId)};
 }
 async function authorized(tx:Transaction,uid:string,c:string,r:string,states:string[]) {
-  const {company}=await membership(tx,uid,c,['administrator','manager']);await coverage(tx,c);
+  const {company}=await membership(tx,uid,c,['administrator','manager']);await coverage(tx,c,'canPublish');
   const ref=revisionRef(c,r),revision=await tx.get(ref),data=revision.data();
   assert(data?.schemaVersion===2,'Expected staged publication schema v2');
   if(data.createdByAccountId!==uid||!states.includes(data.status))denied('Revision is not owned by this account or has an incompatible state');
@@ -25,7 +26,8 @@ export const beginStagedPublication=onCall(options,async request=>{
   const uid=await identity(request),input=object(request.data);keys(input,['manifest','manifestHash']);
   const plan=manifest(input.manifest,uid),manifestHash=hash(plan);assert(input.manifestHash===manifestHash,'Manifest hash mismatch');
   return db.runTransaction(async tx=>{
-    const {company}=await membership(tx,uid,plan.companyId,['administrator','manager']);await coverage(tx,plan.companyId);
+    const {company}=await membership(tx,uid,plan.companyId,['administrator','manager']);const subscription=await coverage(tx,plan.companyId,'canPublish');
+    enforcePublicationLimits(resolveCommercial(subscription.data()).capabilities,plan.recordCounts);
     assert(company.get('name')===plan.company.name&&company.get('contact_email')===plan.company.contact_email,'Company context changed');
     const ref=revisionRef(plan.companyId,plan.revisionId),old=await tx.get(ref);
     if(old.exists) {

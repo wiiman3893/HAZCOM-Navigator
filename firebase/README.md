@@ -1,5 +1,9 @@
 # HazCom Navigator Firebase development foundation
 
+## Commercial entitlement V1 source checkpoint
+
+The local source contains the versioned Company/Pro Demo capability resolver, trusted publication limits, Pro-team coverage, and synthetic lifecycle proof described in [Commercial Contract V1](../docs/COMMERCIAL_CONTRACT_V1.md) and [the entitlement handoff](../docs/ENTITLEMENT_ENGINE_HANDOFF.md). These changes were tested only in emulators. **Do not deploy this source as a live commercial release to hazcom-navigator-dev.** The existing cloud deployment still has the earlier subscription model. Existing `customer` and `professional` records map to Company and Pro without rewriting coverage or Company roles.
+
 ## Current scalable publication source checkpoint — 2026-09-22
 
 Schema 2 staged publication is implemented and emulator-verified for **Small, Medium, Large (2,000 SDS), and Stress (5,000 SDS)**, each through independent SQLite replication. Main now uses immutable manifests, bounded chunks, authenticated binary PDF uploads, progress/resume, sealed validation, a two-document final transaction and privileged abandoned-staging cleanup. The old numeric limits were not raised; schema 1 endpoints remain explicitly isolated for compatibility/regression tests. Existing Google sign-in, Account/entitlement/Membership/Company and SQLite foundations remain intact.

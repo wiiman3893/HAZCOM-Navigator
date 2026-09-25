@@ -12,11 +12,15 @@
       "types": "./dist/firebase.d.ts",
       "default": "./dist/firebase.js"
     },
-    "./node": "./src/node.js"
+    "./node": "./src/node.js",
+    "./backup": {
+      "types": "./dist/backup.d.ts",
+      "default": "./dist/backup.js"
+    }
   },
   "scripts": {
     "build": "tsc",
-    "test": "node --test test/unit.test.mjs test/staged-unit.test.mjs"
+    "test": "node --test test/unit.test.mjs test/staged-unit.test.mjs test/backup.test.mjs"
   },
   "dependencies": {
     "@hazcom/core": "0.1.0",

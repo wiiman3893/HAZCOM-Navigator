@@ -10,6 +10,7 @@ import {buildPublication} from '../../sync/src/projection.js';
 import {publicationPlan} from '../../sync/src/staged.js';
 import {manifest,chunkRows,descriptor,hash} from '../../../firebase/functions/lib/staged-contract.js';
 import {dummyPdf,fixture} from '../../sync/test/fixtures.mjs';
+import {resolveCommercial} from '@hazcom/core';
 const migration=await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8');
 const area=n=>({name:`Area ${n}`,location:'Building 1',poc_name:'Safety lead',poc_email:'safety@example.test',poc_phone_number:'+1 (555) 123-4567',description:'Local fixture'});
 const chemical=n=>({product_name:`Cleaner ${n}`,chemical_names:'Acetone',cas_numbers:'67-64-1',manufacturer:'Test manufacturer',sds_date:'2026-01-01'});
@@ -19,6 +20,44 @@ test('Date-only authoring defaults use the local calendar day at the UTC boundar
  finally{if(original===undefined)delete process.env.TZ;else process.env.TZ=original;}
 });
 async function setup(){const folder=await mkdtemp(path.join(tmpdir(),'hazcom-authoring-'));const sql=nodeSqlite(path.join(folder,'author.db'),REPLICA_SCHEMA_SQL+migration),files=await nodeFiles(path.join(folder,'attachments'));sql.db.prepare('INSERT INTO company(id,name,contact_email) VALUES (?,?,?)').run('company-a','Authoring Company','safety@example.test');sql.db.prepare('INSERT INTO company(id,name,contact_email) VALUES (?,?,?)').run('company-b','Other Company','other@example.test');let active='company-a',role='manager';const create=c=>authoringService({sql,files,companyId:c,authorize:async()=>({companyId:active,role,active:true}),today:()=> '2026-09-22'});return {sql,files,service:create('company-a'),other:create('company-b'),switchTo(c){active=c;},role(r){role=r;}};}
+
+test('Company Demo limits are scoped to active records and SDS remains available',async()=>{
+ const f=await setup(),capabilities=resolveCommercial({plan:'demo',demoType:'company'}).capabilities;
+ const s=authoringService({sql:f.sql,files:f.files,companyId:'company-a',authorize:async()=>({companyId:'company-a',role:'manager',active:true,capabilities}),today:()=> '2026-09-22'});
+ try{
+  for(let i=0;i<2;i++)await s.create('work_area',area(i),`demo-area-${i}`);
+  await assert.rejects(s.create('work_area',area(2),'demo-area-2'),/limit/);
+  for(let i=0;i<3;i++)await s.create('chemical_product',chemical(i),`demo-product-${i}`);
+  await assert.rejects(s.create('chemical_product',chemical(3),'demo-product-3'),/limit/);
+  await s.importSds('demo-product-0',dummyPdf('Demo'),'demo.pdf');
+  await s.create('worker',{name:'First'},'demo-worker-0');
+  await assert.rejects(s.create('worker',{name:'Second'},'demo-worker-1'),/limit/);
+  await s.trash('work_area','demo-area-0');
+  await s.create('work_area',area(2),'demo-area-2');
+  await assert.rejects(s.trash('work_area','demo-area-0',true),/limit/);
+  assert.equal((await s.snapshot()).attachments.length,1);
+ }finally{f.sql.close();}
+});
+
+test('authoring consumes synthetic paid tier limits without plan-name branches',async()=>{
+ const f=await setup(),capabilities={...resolveCommercial({plan:'company',paidThrough:'2027-01-01'},Date.UTC(2026,8,22)).capabilities,maxWorkAreasPerCompany:1};
+ const s=authoringService({sql:f.sql,files:f.files,companyId:'company-a',authorize:async()=>({companyId:'company-a',role:'manager',active:true,capabilities}),today:()=> '2026-09-22'});
+ try{await s.create('work_area',area(0),'tier-area-one');await assert.rejects(s.create('work_area',area(1),'tier-area-two'),/limit/);assert.equal((await s.snapshot()).work_area.length,1);}
+ finally{f.sql.close();}
+});
+
+test('Pro Demo entity limits apply independently to each Company',async()=>{
+ const f=await setup(),capabilities=resolveCommercial({plan:'demo',demoType:'pro'}).capabilities;
+ const service=companyId=>authoringService({sql:f.sql,files:f.files,companyId,authorize:async()=>({companyId,role:'manager',active:true,capabilities}),today:()=> '2026-09-22'});
+ try{
+  const first=service('company-a'),second=service('company-b');
+  await first.create('worker',{name:'First Company Worker'},'pro-demo-worker-a');
+  await second.create('worker',{name:'Second Company Worker'},'pro-demo-worker-b');
+  await assert.rejects(first.create('worker',{name:'Extra'},'pro-demo-worker-extra'),/limit/);
+  assert.equal((await first.snapshot()).worker.length,1);
+  assert.equal((await second.snapshot()).worker.length,1);
+ }finally{f.sql.close();}
+});
 
 test('Full authoring scenario: 3 areas, 10 Chemicals with SDS, 5 Workers, retraining, trash/restore and validated publication',async()=>{
  const f=await setup(),s=f.service;

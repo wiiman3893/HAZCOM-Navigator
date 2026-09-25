@@ -1,6 +1,7 @@
 import { initializeApp, getApp } from 'firebase/app';
 import { initializeAuth, inMemoryPersistence, GoogleAuthProvider, signInWithCredential, signOut, type Auth } from 'firebase/auth';
-import { collection, doc, getDocFromServer, getDocsFromServer, getFirestore, Timestamp, type Firestore } from 'firebase/firestore';
+import { collection, doc, getDocFromServer, getDocsFromServer, getFirestore, type Firestore } from 'firebase/firestore';
+import {resolveCommercial} from '@hazcom/core';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
@@ -42,12 +43,9 @@ export async function loadAccount(uid:string):Promise<AccountSession>{
     catch(error){if((error as {code?:string}).code!=='permission-denied')throw error;}
   }
   if(auth.currentUser?.uid!==uid)throw Error('The signed-in account changed.');
-  const entitlement=subscription.data();
-  const until=entitlement?.validUntil instanceof Timestamp?entitlement.validUntil.toMillis():NaN;
-  const grace=entitlement?.graceUntil instanceof Timestamp?entitlement.graceUntil.toMillis():NaN;
-  // Presentation only. The callable rechecks authoritative plan, dates and Company count.
-  const eligible=!!entitlement && ['customer','professional'].includes(entitlement.plan) && ['active','grace'].includes(entitlement.status) && Number.isFinite(until) && Number.isFinite(grace) && grace>=until && grace<=until+14*86400000 && Date.now()<grace;
-  const canCreate=eligible && (entitlement.plan==='professional' || entitlement.coveredCompanyCount===0);
-  const state=eligible?(Date.now()<until?'Active':'Grace period'):'Read access only';
-  return {uid,email:auth.currentUser?.email??'',companies:companies.sort((a,b)=>a.name.localeCompare(b.name)),activeCompanyId:account.get('activeCompanyId')??null,entitlement:entitlement?`${entitlement.plan} · ${state}`:'No personal subscription · membership access retained',canCreate};
+  const entitlement=subscription.data(),commercial=resolveCommercial(entitlement);
+  const canCreate=commercial.capabilities.canCreateCompanies&&(entitlement?.coveredCompanyCount??0)<commercial.capabilities.maxCoveredCompanies;
+  const label=commercial.plan==='demo'?`${commercial.demoType==='pro'?'Pro':'Company'} Demo`:commercial.plan==='pro'?'Pro':commercial.plan==='company'?'Company':'No personal subscription';
+  const state=commercial.status==='active'?'Active':commercial.status==='grace'?'Grace and export period':'Read access only';
+  return {uid,email:auth.currentUser?.email??'',companies:companies.sort((a,b)=>a.name.localeCompare(b.name)),activeCompanyId:account.get('activeCompanyId')??null,entitlement:`${label} · ${state}`,canCreate};
 }

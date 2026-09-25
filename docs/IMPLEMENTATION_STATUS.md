@@ -1,5 +1,9 @@
 # Implementation status
 
+## Commercial entitlement V1 source checkpoint — local/emulator only
+
+The canonical [commercial contract](COMMERCIAL_CONTRACT_V1.md) and [entitlement handoff](ENTITLEMENT_ENGINE_HANDOFF.md) describe a validated Demo/capability foundation. Account bootstrap, Demo limits/switching, trusted publication gates, local authoring limits, synthetic billing events, Pro-seat inheritance, takeover, backup-email verification with a mock outbox, emulator-only cleanup, and versioned local backup round-trip have automated coverage. A Windows service exports that backup during paid grace/export. Production email/cloud delivery, scheduled cleanup, native restore, and real billing integration remain future work. The development Firebase project was not deployed.
+
 ## Current Windows authoring checkpoint
 
 HazCom Navigator now has a native Windows Manager/Administrator authoring workspace backed by the existing Company-scoped SQLite model.

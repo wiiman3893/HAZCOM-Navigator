@@ -54,7 +54,11 @@ test('Customer limit is enforced under concurrent creation; retry is idempotent'
   assert.equal((await call('createCompany','customer',{companyId,company})).created,false);
   assert.equal((await db.doc('subscriptions/customer').get()).get('coveredCompanyCount'),1);
   assert.equal((await db.doc(`companies/${companyId}/memberships/customer`).get()).get('role'),'administrator');
-  await assert.rejects(call('createCompany','outsider',{companyId:'unpaid',company}));
+  assert.equal((await call('createCompany','outsider',{companyId:'demo-company',company})).created,true);
+  await assert.rejects(call('createCompany','outsider',{companyId:'demo-second',company}));
+  await assert.rejects(call('beginPublication','outsider',{companyId:'demo-company',revisionId:'demo-rev',parentRevisionId:null}));
+  await assert.rejects(call('setMembership','outsider',{companyId:'demo-company',uid:'member',role:'member',active:true}));
+  assert.equal((await db.doc('subscriptions/outsider').get()).get('plan'),'demo');
 });
 test('Professional creation grants Manager only; membership is separate from paid coverage',async()=> {
   for(const companyId of ['professional-a','professional-b']) assert.equal((await call('createCompany','professional',{companyId,company})).role,'manager');
@@ -143,7 +147,7 @@ test('concurrent publications reject stale parent and do not expose losing datas
 });
 test('entitlement boundaries and malformed data fail closed',async()=> {
   const now=Date.now(), entitlement={plan:'customer',status:'active',validUntil:Timestamp.fromMillis(now-1000),graceUntil:Timestamp.fromMillis(now+1000)};
-  assert.equal(canAuthor(entitlement,now),true);
+  assert.equal(canAuthor(entitlement,now),false);
   assert.equal(canAuthor({...entitlement,graceUntil:Timestamp.fromMillis(now)},now),false);
   assert.equal(canAuthor({...entitlement,graceUntil:Timestamp.fromMillis(now+15*86400000)},now),false);
   for (const status of ['export_only','inactive','unknown']) assert.equal(canAuthor({...entitlement,status},now),false);
@@ -161,4 +165,171 @@ test('membership revocation immediately removes published data and SDS access',a
   await call('setMembership','customer',{companyId,uid:'member',role:'member',active:false,workerId:'worker'});
   await assertFails(getDoc(doc(context('member').firestore(),`companies/${companyId}/publishedRevisions/rev1/chemicalProducts/product`)));
   await assertFails(getBytes(ref(context('member').storage(),globalThis.sds.relativePath)));
+});
+
+test('trusted Pro billing events materialize inherited Manager access and seat removal revokes it without deleting Companies',async()=>{
+ const {applyTrustedBillingEvent}=await import('../lib/commercial-admin.js');
+ for(const uid of ['pro-owner-v1','pro-seat-v1']){
+  await auth.createUser({uid,email:`${uid}@example.com`});
+  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+  await call('bootstrapAccount',uid,{});
+ }
+ const started={id:'billing-start',type:'subscription_started',subscriptionId:'pro-owner-v1',version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:'pro',cadence:'monthly',priceVersion:'v1'}};
+ assert.equal((await applyTrustedBillingEvent('pro-owner-v1',started)).applied,true);
+ assert.equal((await applyTrustedBillingEvent('pro-owner-v1',started)).applied,false);
+ assert.equal((await call('createCompany','pro-owner-v1',{companyId:'pro-client-one',company})).role,'manager');
+ const {beginBackupEmailVerification,confirmBackupEmailVerification}=await import('../lib/commercial-backup.js');
+ const outbox=[];await beginBackupEmailVerification('pro-owner-v1','pro-client-one','backup-new@example.com',{send:async message=>{outbox.push(message);}});
+ assert.equal((await db.doc('companies/pro-client-one').get()).get('backupEmail'),company.contact_email);
+ await assert.rejects(confirmBackupEmailVerification('pro-client-one','wrong-token'));
+ assert.equal((await confirmBackupEmailVerification('pro-client-one',outbox[0].token)).email,'backup-new@example.com');
+ assert.equal((await db.doc('companies/pro-client-one').get()).get('backupEmailVerified'),true);
+ assert.equal((await db.doc('accounts/backup-new@example.com').get()).exists,false);
+ const seat={...started,id:'billing-seat',version:2,type:'seat_added',payload:{uid:'pro-seat-v1'}};
+ await applyTrustedBillingEvent('pro-owner-v1',seat);
+ assert.equal((await db.doc('companies/pro-client-one/memberships/pro-seat-v1').get()).get('role'),'manager');
+ assert.equal((await call('createCompany','pro-owner-v1',{companyId:'pro-client-two',company})).role,'manager');
+ assert.equal((await db.doc('companies/pro-client-two/memberships/pro-seat-v1').get()).get('proTeamSubscriptionId'),'pro-owner-v1');
+ await call('beginPublication','pro-owner-v1',{companyId:'pro-client-two',revisionId:'pro-seat-access',parentRevisionId:null});
+ const seatSds=await call('uploadPublicationSds','pro-owner-v1',{companyId:'pro-client-two',revisionId:'pro-seat-access',attachmentId:'seat-sds',chemicalProductId:'product',base64:Buffer.from('%PDF-1.7\nSynthetic Pro seat SDS\n%%EOF').toString('base64')});
+ await call('finalizePublication','pro-owner-v1',{companyId:'pro-client-two',revisionId:'pro-seat-access',dataset:payload,attachmentIds:['seat-sds']});
+ await assertSucceeds(getDoc(doc(context('pro-seat-v1').firestore(),'companies/pro-client-two/publishedRevisions/pro-seat-access/chemicalProducts/product')));
+ await assertSucceeds(getBytes(ref(context('pro-seat-v1').storage(),seatSds.relativePath)));
+ await assert.rejects(call('setMembership','pro-seat-v1',{companyId:'pro-client-two',uid:'pro-seat-v1',role:'administrator',active:true}));
+ await applyTrustedBillingEvent('pro-owner-v1',{...seat,id:'billing-remove',version:3,type:'seat_removed'});
+ assert.equal((await db.doc('companies/pro-client-one/memberships/pro-seat-v1').get()).exists,false);
+ await assertFails(getDoc(doc(context('pro-seat-v1').firestore(),'companies/pro-client-two/publishedRevisions/pro-seat-access/chemicalProducts/product')));
+ await assertFails(getBytes(ref(context('pro-seat-v1').storage(),seatSds.relativePath)));
+ assert.equal((await db.doc('companies/pro-client-two').get()).exists,true);
+ const buyerUid='pro-client-buyer';await auth.createUser({uid:buyerUid,email:`${buyerUid}@example.com`});
+ await auth.updateUser(buyerUid,{providerToLink:{providerId:'google.com',uid:`google-${buyerUid}`,email:`${buyerUid}@example.com`}});
+ await call('bootstrapAccount',buyerUid,{});
+ await applyTrustedBillingEvent(buyerUid,{...started,id:'buyer-paid',subscriptionId:buyerUid,payload:{tierId:'company',cadence:'monthly'}});
+ const {transferProCompanyToCompany}=await import('../lib/commercial-admin.js');
+ assert.equal((await transferProCompanyToCompany('pro-client-one',buyerUid,'takeover-one')).transferred,true);
+ assert.equal((await transferProCompanyToCompany('pro-client-one',buyerUid,'takeover-one')).transferred,false);
+ assert.equal((await db.doc('companies/pro-client-one/coverage/current').get()).get('accountId'),buyerUid);
+ assert.equal((await db.doc('companies/pro-client-one/memberships/pro-owner-v1').get()).exists,false);
+ assert.equal((await db.doc('companies/pro-client-one/memberships/pro-client-buyer').get()).get('role'),'administrator');
+ assert.equal((await db.doc('companies/pro-client-two/coverage/current').get()).get('accountId'),'pro-owner-v1');
+ await call('createCompany','pro-owner-v1',{companyId:'pro-client-three',company});
+ await call('beginPublication','pro-owner-v1',{companyId:'pro-client-three',revisionId:'pro-revision',parentRevisionId:null});
+ const publishedSds=await call('uploadPublicationSds','pro-owner-v1',{companyId:'pro-client-three',revisionId:'pro-revision',attachmentId:'pro-sds',chemicalProductId:'product',base64:Buffer.from('%PDF-1.7\nSynthetic backup cleanup SDS\n%%EOF').toString('base64')});
+ await call('finalizePublication','pro-owner-v1',{companyId:'pro-client-three',revisionId:'pro-revision',dataset:payload,attachmentIds:['pro-sds']});
+ assert.equal((await getStorage().bucket().file(publishedSds.relativePath).exists())[0],true);
+ await call('setMembership','pro-owner-v1',{companyId:'pro-client-three',uid:'member',role:'member',active:true,workerId:'worker'});
+ assert.equal((await db.doc('companies/pro-client-three/memberships/member').get()).get('workerId'),'worker');
+ await assert.rejects(call('setMembership','pro-owner-v1',{companyId:'pro-client-three',uid:'member',role:'administrator',active:true}));
+ const paidThrough=(await db.doc('subscriptions/pro-owner-v1').get()).get('paidThrough');
+ await applyTrustedBillingEvent('pro-owner-v1',{...started,id:'schedule-company',version:4,type:'subscription_downgrade_scheduled',payload:{tierId:'company',retainedCompanyId:'pro-client-two'}});
+ await assert.rejects(applyTrustedBillingEvent('pro-owner-v1',{...started,id:'renew-early',version:5,type:'subscription_renewed',effectiveAt:paidThrough,payload:{administratorUid:'pro-owner-v1'}}));
+ await applyTrustedBillingEvent('pro-owner-v1',{...started,id:'renew-company',version:5,type:'subscription_renewed',effectiveAt:paidThrough,payload:{administratorUid:'pro-owner-v1'}},Date.parse(paidThrough)+1);
+ assert.equal((await db.doc('subscriptions/pro-owner-v1').get()).get('plan'),'company');
+ assert.equal((await db.doc('companies/pro-client-two/memberships/pro-owner-v1').get()).get('role'),'administrator');
+ assert.equal((await db.doc('companies/pro-client-three/coverage/current').get()).get('state'),'ending');
+ assert.equal((await db.doc('companies/pro-client-three').get()).exists,true);
+ const cleanupAt=Date.parse((await db.doc('companies/pro-client-three/coverage/current').get()).get('exportEndsAt'))+1;
+ const {cleanupExpiredCompanyInEmulator}=await import('../lib/commercial-admin.js');
+ assert.equal((await cleanupExpiredCompanyInEmulator('pro-client-three','pro-owner-v1','pro-cleanup-three',cleanupAt)).deleted,true);
+ assert.equal((await getStorage().bucket().file(publishedSds.relativePath).exists())[0],false);
+ assert.equal((await db.doc('companies/pro-client-three').get()).exists,false);
+});
+
+test('Pro Demo switch preserves three Companies and parks unselected Companies in Company Demo',async()=>{
+ const uid='demo-switch-v1';await auth.createUser({uid,email:`${uid}@example.com`});
+ await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+ await call('bootstrapAccount',uid,{});
+ await call('switchDemoType',uid,{demoType:'pro'});
+ for(const companyId of ['demo-one','demo-two','demo-three'])await call('createCompany',uid,{companyId,company});
+ await assert.rejects(call('createCompany',uid,{companyId:'demo-four',company}));
+ await assert.rejects(call('beginPublication',uid,{companyId:'demo-one',revisionId:'demo-stage',parentRevisionId:null}));
+ await call('switchDemoType',uid,{demoType:'company',selectedCompanyId:'demo-two'});
+ await assert.rejects(call('getCompanyCapabilities',uid,{companyId:'demo-one'}));
+ assert.equal((await call('getCompanyCapabilities',uid,{companyId:'demo-two'})).capabilities.canAuthor,true);
+ assert.equal((await db.doc('companies/demo-one').get()).exists,true);
+ await call('switchDemoType',uid,{demoType:'pro'});
+ assert.equal((await call('getCompanyCapabilities',uid,{companyId:'demo-one'})).capabilities.canAuthor,true);
+ const {applyTrustedBillingEvent}=await import('../lib/commercial-admin.js');
+ await applyTrustedBillingEvent(uid,{id:'demo-to-company',type:'subscription_started',subscriptionId:uid,version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:'company',cadence:'monthly',retainedCompanyId:'demo-two',administratorUid:uid}});
+ assert.equal((await db.doc('companies/demo-one/coverage/current').get()).get('state'),'ending');
+ assert.equal((await db.doc('companies/demo-two/memberships/demo-switch-v1').get()).get('role'),'administrator');
+ assert.equal((await call('getCompanyCapabilities',uid,{companyId:'demo-two'})).capabilities.canPublish,true);
+ await assert.rejects(call('getCompanyCapabilities',uid,{companyId:'demo-one'}));
+ assert.equal((await db.doc('companies/demo-three').get()).exists,true);
+ const accountStatus=await call('getCommercialStatus',uid,{}),endingStatus=await call('getCompanyCoverageStatus',uid,{companyId:'demo-three'});
+ assert.equal(accountStatus.plan,'company');assert.equal(accountStatus.seatCount,0);
+ assert.equal(endingStatus.status,'ending');assert.ok(endingStatus.hostedAccessEndingAt);
+ const {cleanupExpiredCompanyInEmulator}=await import('../lib/commercial-admin.js');
+ const end=Date.parse((await db.doc('companies/demo-three/coverage/current').get()).get('exportEndsAt'));
+ await db.doc('companies/demo-one/coverage/current').update({accountId:'replacement-owner',state:'active'});
+ assert.equal((await cleanupExpiredCompanyInEmulator('demo-one',uid,'cleanup-transferred',end+1)).deleted,false);
+ assert.equal((await db.doc('companies/demo-one').get()).exists,true);
+ assert.equal((await cleanupExpiredCompanyInEmulator('demo-three',uid,'cleanup-ending',end+1)).deleted,true);
+ assert.equal((await cleanupExpiredCompanyInEmulator('demo-three',uid,'cleanup-ending',end+1)).deleted,false);
+ assert.equal((await db.doc('companies/demo-three').get()).exists,false);
+ assert.equal((await db.doc('commercialCleanupAudit/cleanup-ending').get()).get('status'),'completed');
+});
+
+test('invited Company Manager authors under Company coverage without a personal paid subscription',async()=>{
+ const uid='invited-manager-v1';await auth.createUser({uid,email:`${uid}@example.com`});
+ await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+ await call('bootstrapAccount',uid,{});
+ assert.equal((await db.doc(`subscriptions/${uid}`).get()).get('plan'),'demo');
+ const companyId=globalThis.customerCompany;
+ await call('setMembership','customer',{companyId,uid,role:'manager',active:true});
+ assert.equal((await call('getCompanyCapabilities',uid,{companyId})).capabilities.canPublish,true);
+ const parentRevisionId=(await db.doc(`companies/${companyId}`).get()).get('currentRevisionId');
+ assert.equal((await call('beginPublication',uid,{companyId,revisionId:'invited-manager-revision',parentRevisionId})).status,'staging');
+});
+
+test('paid Company coverage attaches to an existing Manager without mutating Company roles',async()=>{
+ const {applyTrustedBillingEvent,attachExistingCompanyCoverage}=await import('../lib/commercial-admin.js');
+ for(const uid of ['existing-admin-v1','existing-manager-v1']){
+  await auth.createUser({uid,email:`${uid}@example.com`});
+  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+  await call('bootstrapAccount',uid,{});
+ }
+ await applyTrustedBillingEvent('existing-manager-v1',{id:'existing-paid',type:'subscription_started',subscriptionId:'existing-manager-v1',version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:'company',cadence:'monthly'}});
+ const companyId='existing-factory';
+ await db.doc(`companies/${companyId}`).set({id:companyId,...company,active:true,administratorCount:1,currentRevisionId:null,currentRevisionNumber:0});
+ await db.doc(`companies/${companyId}/memberships/existing-admin-v1`).set({uid:'existing-admin-v1',companyId,role:'administrator',active:true,workerId:null});
+ await db.doc(`companies/${companyId}/memberships/existing-manager-v1`).set({uid:'existing-manager-v1',companyId,role:'manager',active:true,workerId:null});
+ assert.equal((await attachExistingCompanyCoverage(companyId,'existing-manager-v1','existing-cover')).role,'manager');
+ assert.equal((await attachExistingCompanyCoverage(companyId,'existing-manager-v1','existing-cover')).attached,false);
+ assert.equal((await db.doc(`companies/${companyId}/memberships/existing-manager-v1`).get()).get('role'),'manager');
+ assert.equal((await db.doc(`companies/${companyId}`).get()).get('administratorCount'),1);
+ assert.equal((await call('getCompanyCapabilities','existing-manager-v1',{companyId})).capabilities.canAuthor,true);
+});
+
+test('Pro owner release preserves read access during export window and cleanup deletes only after it',async()=>{
+ const {applyTrustedBillingEvent,releaseProCompany,cleanupExpiredCompanyInEmulator}=await import('../lib/commercial-admin.js');
+ const uid='release-owner-v1';await auth.createUser({uid,email:`${uid}@example.com`});
+ await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+ await call('bootstrapAccount',uid,{});
+ await applyTrustedBillingEvent(uid,{id:'release-plan',type:'subscription_started',subscriptionId:uid,version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:'pro',cadence:'monthly'}});
+ const companyId='released-client';await call('createCompany',uid,{companyId,company});
+ const release=await releaseProCompany(uid,companyId,'release-event');
+ assert.equal(release.released,true);
+ assert.equal((await releaseProCompany(uid,companyId,'release-event')).released,false);
+ assert.equal((await call('getCompanyCoverageStatus',uid,{companyId})).status,'ending');
+ assert.equal((await getDoc(doc(context(uid).firestore(),`companies/${companyId}`))).exists(),true);
+ await assert.rejects(call('getCompanyCapabilities',uid,{companyId}));
+ assert.equal((await cleanupExpiredCompanyInEmulator(companyId,uid,'release-too-early',Date.parse(release.exportEndsAt)-1)).deleted,false);
+ assert.equal((await cleanupExpiredCompanyInEmulator(companyId,uid,'release-final',Date.parse(release.exportEndsAt)+1)).deleted,true);
+});
+
+test('failed-payment recovery before cleanup restores authoring and retains the Company',async()=>{
+ const {applyTrustedBillingEvent,cleanupExpiredCompanyInEmulator}=await import('../lib/commercial-admin.js');
+ const uid='recovery-owner-v1';await auth.createUser({uid,email:`${uid}@example.com`});
+ await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+ await call('bootstrapAccount',uid,{});
+ await applyTrustedBillingEvent(uid,{id:'recovery-start',type:'subscription_started',subscriptionId:uid,version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:'company',cadence:'monthly'}});
+ const companyId='recovery-company';await call('createCompany',uid,{companyId,company});
+ await db.doc(`subscriptions/${uid}`).update({paidThrough:new Date(Date.now()-15*86400000).toISOString(),graceEndsAt:new Date(Date.now()-86400000).toISOString()});
+ await assert.rejects(call('getCompanyCapabilities',uid,{companyId}));
+ assert.equal((await call('getCompanyCoverageStatus',uid,{companyId})).status,'expired');
+ await applyTrustedBillingEvent(uid,{id:'recovery-paid',type:'payment_recovered',subscriptionId:uid,version:2,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{}});
+ assert.equal((await call('getCompanyCapabilities',uid,{companyId})).capabilities.canAuthor,true);
+ assert.equal((await cleanupExpiredCompanyInEmulator(companyId,uid,'cleanup-after-recovery',Date.now())).deleted,false);
+ assert.equal((await db.doc(`companies/${companyId}`).get()).exists,true);
 });

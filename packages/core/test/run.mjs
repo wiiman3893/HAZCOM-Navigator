@@ -19,5 +19,6 @@ assert.equal(updated[1].training_required_since,'2026-09-01');
 assert.equal(findPermission('member','read','chemical_product')?.scope,'own-organization');
 assert.equal(findPermission('member','create','training_event')?.scope,'related-to-linked-business-record');
 assert.equal(isEventMutationAllowed('update','training_event'), false);
-assert.equal(PLANS.find(p=>p.id==='professional')?.maxOrganizations,'unlimited');
+assert.equal(PLANS.find(p=>p.id==='professional')?.maxOrganizations,25);
+assert.equal(PLANS.find(p=>p.id==='professional')?.name,'Pro');
 console.log('HazCom core tests passed.');

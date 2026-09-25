@@ -13,6 +13,6 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node test/run.mjs"
+    "test": "npm run build && node test/run.mjs && node --test test/commercial.test.mjs"
   }
 }

@@ -1,0 +1,31 @@
+# HazCom Navigator commercial contract v1
+
+This document is the authority for commercial behavior. It changes neither Company roles nor the immutable publication model. The four independent axes are **plan family/tier**, **billing cadence**, **Company role**, and **resolved capabilities/limits**. Customer-facing plans are **Company** and **Pro**; `customer` and `professional` remain read-compatible legacy identifiers. Prices and limits come from a versioned catalog, never plan-name branches in authorization code. Current development prices are placeholders: Company $10/month or $100/year; Pro $25/month or $250/year; an additional Pro seat has provisional monthly/annual prices. Paid Company data ceilings await a pricing decision. Pro currently covers up to 25 Companies.
+
+## Demo and upgrades
+
+Every real authenticated Account has a non-expiring Demo, with a selectable Company or Pro simulation. Company Demo permits one Company, one Worker, three Chemical Products, two Work Areas and local SDS PDFs. Pro Demo permits three Companies with those same per-Company limits and one Pro seat. Neither Demo permits publication, client invitations or additional seats. Switching to Company Demo parks all but the selected Company without deleting them; switching back restores Pro Demo access. Upgrade keeps the selected Company, its SQLite drafts and SDS files. Pro Demo to paid Company requires an explicit retained Company choice; other Demo Companies receive 14 days of read/export/backup access before coverage-owned cloud cleanup.
+
+## Coverage, roles and Pro teams
+
+One Company has one active commercial coverage source: a Company subscription or a Pro subscription. Coverage is independent of Membership. Invited Company users need no personal subscription. A new Company under a Company subscription grants its purchaser Administrator; covering an existing Company never mutates the purchaser's role. An Administrator may perform HazCom authoring and Company/access administration. A HAZCOM Manager may author but cannot administer unrestricted Company roles/settings. A Company plan normally has one covered Company and must retain at least one Administrator.
+
+Pro is a service-provider subscription. Its client Company may have zero Administrators or client Accounts indefinitely. Its backup/contact email is required even without an Account. The Pro owner/team admin manages billing, seats, coverage and releases. One seat is included; additional seats use versioned cadence-matched add-ons and proration. All active Pro seats inherit HAZCOM Manager operational access across every current and future covered Company; a seat is not automatically a Company Administrator. Seat removal revokes inherited access without deleting data. Pro seats may invite/remove client Members and link Workers, but may not appoint Administrators or grant themselves ownership. Inherited access must be represented separately from ordinary Company Membership, even where a trusted read index materializes the effective permission.
+
+A verified new backup email replaces the authoritative address through an audited Pro-owner action; the old address need not approve. Possessing the address grants only a single-purpose backup request, never an Account, Membership or Company control. Backups are available throughout paid, grace and export periods. Delivery may attach a backup below a configurable size threshold (development default about 15 MB); larger files use expiring, single-purpose links. No production email provider is part of v1.
+
+## Subscription lifecycle
+
+Monthly and annual terms renew on their calendar anniversary, clamping month-end dates. Cancel means **at period end**. A failed payment or the end of a cancelled paid term starts a 14-day grace/export window. During that window, published hazard data and SDS remain readable and backup/export remains available to authorized readers; new Companies, authoring, publication, seats and invitations stop. Status includes the hosted-access-ending date. Recovery or a valid coverage transfer cancels pending deletion. After the window, cleanup may delete only the cloud copy still owned by the expired coverage source. It must re-read coverage transactionally, be idempotent and audited, and must never delete a transferred Company or Windows local SQLite/SDS drafts.
+
+Company-to-Pro upgrades on the same cadence are immediate and credit unused Company value while keeping the anniversary where supported. Monthly-to-annual starts a new annual term and credits unused monthly value. New seats prorate over the remaining parent term. Pro-to-Company downgrade is scheduled for period end and requires an explicit retained Company; others enter the 14-day window. A Pro client takeover is an audited coverage transfer: the client starts a Company subscription, establishes its first Administrator, retains all Company data, and loses automatic Pro-team access. Former consultants require explicit invitation afterward.
+
+Reducing a tier never deletes over-limit records or append-only history. Existing data remains readable/exportable; creation that would continue or increase an over-limit state is blocked until reduction or upgrade.
+
+## Backup and authority
+
+A versioned backup contains Company metadata, all business entities and relationships, SDS bytes, relevant soft-delete/history data, hashes, sizes and schema metadata. It excludes Firebase/OAuth credentials, passwords, private tokens, billing secrets and authorization secrets. Import validates the manifest, paths, relationships, sizes and hashes before activating data. Forward compatibility is best-effort, not a permanent promise.
+
+Only a trusted provider-neutral billing-event adapter may change paid state. Events carry stable IDs, versions, effective times and audit metadata and are idempotent. Client calls cannot synthesize paid entitlements. Firebase Functions enforce cloud actions; Windows authoring enforces local creation limits after authoritative capability resolution; publication is denied for Demo at its trusted entry point. UI notices explain authoritative state but never grant it.
+
+The current task is local/emulator-only. No Stripe, production email, real-cloud deployment or destructive cleanup of development Companies is authorized by this contract.
