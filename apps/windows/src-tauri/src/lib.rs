@@ -33,7 +33,8 @@ pub fn run() {
             publication_files::store_authoring_sds,
             publication_files::store_sds_import_source,
             authoring::authoring_batch,
-            backup_restore::restore_company_backup
+            backup_restore::restore_company_backup,
+            backup_restore::inspect_restored_company_backup
         ])
         .plugin(
             tauri_plugin_sql::Builder::default()

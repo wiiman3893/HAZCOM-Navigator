@@ -69,6 +69,18 @@ Checkpoint 5 commit: `5fef7042543ab017aa1525ff4290b8fc74b5392e`. It was pushed t
 - The trusted event adapter persists `billingAnchorAt`. Existing subscription documents without it fall back to their current term start; the original anchor cannot be reconstructed from an already drifted legacy term.
 - Core tests cover monthly, annual leap-day and recovery dates. `npm run test:core`, Functions build, `npm run build`, and final `npm run test:firebase` (17 tests) passed. An intermediate emulator run failed because the new grace test computed paid-through and grace-end from separate clock reads, exceeding the 14-day cap by milliseconds; the test now uses one timestamp and the complete rerun passed.
 
+Checkpoint 6 commit: `cf2670879858aab6a828b95b547c66703e545d3c`. It was pushed to the task branch; main remained unchanged.
+
+## Checkpoint 7 — read-only verification of activated native restores
+
+- The native importer now writes a sorted SDS descriptor sidecar while staging. A read-only native inspection command checks the activated package manifest, SQLite integrity and foreign keys, exactly one matching Company, core entity counts, SDS path/PDF header/size/SHA-256, SDS Chemical Product ownership in that Company, the saved descriptors, and the v2 manifest descriptor hash. The descriptor sidecar also detects later SDS changes in legacy v1 restores whose manifest lacks that hash.
+- The Windows service rechecks a live Manager/Administrator Membership and authoritative backup/export capability before invoking inspection. It returns counts and package/schema version, not private record data. The primary authoring database is never opened by this command.
+- Native tests verify the JavaScript-generated v2 restore, post-activation ownership tampering, same-size SDS corruption, and legacy v1 corruption; the failed inspections leave the active SQLite file present. `cargo test --lib` passed all 7 tests, `npm run build -w @hazcom/windows` passed, and `git diff --check` passed. The Vite build emitted its existing bundle-size warning.
+
+Files changed in checkpoint 7: `apps/windows/src-tauri/src/backup_restore.rs`, `apps/windows/src-tauri/src/lib.rs`, `apps/windows/src/data/backup.ts`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, `docs/IMPLEMENTATION_STATUS.md`, and this document.
+
+The sidecar is an app-managed integrity snapshot, not a signature against a local attacker who can change both data and sidecar. The Inspector does not select the restored workspace for editing. The JavaScript preflight verifies the records hash before invoking native restore; the native command does not independently recompute that records hash from SQL statements.
+
 Files changed since checkpoint 5: `packages/core/src/commercial.ts`, `packages/core/test/commercial.test.mjs`, `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
 
 Files changed since checkpoint 4: `firebase/functions/src/index.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
@@ -79,7 +91,7 @@ Files changed since checkpoint 2: `packages/sync/src/backup.js`, `packages/sync/
 
 Known blocker: no external blocker. The native restore is an isolated active directory, but the current authoring UI/database selector does not open it. There is no production-safe cleanup scheduler, production email transport or real billing adapter. The exact post-grace hosted-read cutoff versus membership-based read until physical cleanup is a contract/implementation ambiguity; no rule change was made here.
 
-Exact next action: commit/push checkpoint 6, then continue with a read-only/open path for restored workspaces or an explicit import-activation UX decision. Do not merge a restored Company into the existing primary DB. Follow with the broader authority/Pro/race matrix and hosted-read cutoff decision before main integration.
+Exact next action: commit/push checkpoint 7, then continue the broader authority/Pro/race matrix. A future authoring-workspace switch needs an explicit isolated-data design; do not merge a restored Company into the existing primary DB. Resolve the hosted-read cutoff ambiguity before main integration.
 
 Uncommitted work at this checkpoint: none expected after commit; run `git status --short` to verify.
 
