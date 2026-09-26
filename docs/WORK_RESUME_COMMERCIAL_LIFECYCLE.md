@@ -91,6 +91,16 @@ Checkpoint 7 commit: `2a9973dfbd453edd5cfab65a287a09d3225de17d`. It was pushed t
 
 Files changed in checkpoint 8: `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
 
+Checkpoint 8 commit: `d31f23cae105d6f98224a27a2048925e6c9198ad`; it was pushed to the task branch.
+
+## Checkpoint 9 — verify current coverage before Pro membership changes
+
+- The trusted billing adapter now reads each Company's current coverage in the same transaction before adding/removing inherited Pro seats. It refuses a missing, ending, deleting or differently owned coverage document. Scheduled Pro-to-Company downgrade likewise verifies that the retained Company's active coverage still belongs to the Pro subscription before changing Memberships.
+- The new emulator case deliberately makes a subscription's Company list stale. Seat addition and scheduled renewal fail without advancing the event version or granting new access; after restoring the current coverage owner, the same event IDs can succeed. It also verifies that seat addition cannot target ending coverage.
+- The first emulator run failed two existing cases because active legacy coverage documents omit `state`; the guard now treats missing state as the established active form. The final `npm run test:firebase` run passed 19/19 tests, including the new stale-ownership case. Functions TypeScript compilation is part of that command. No cloud data was touched.
+
+Files changed in checkpoint 9: `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
+
 Files changed since checkpoint 5: `packages/core/src/commercial.ts`, `packages/core/test/commercial.test.mjs`, `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
 
 Files changed since checkpoint 4: `firebase/functions/src/index.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
@@ -101,7 +111,7 @@ Files changed since checkpoint 2: `packages/sync/src/backup.js`, `packages/sync/
 
 Known blocker: no external blocker. The native restore is an isolated active directory, but the current authoring UI/database selector does not open it. There is no production-safe cleanup scheduler, production email transport or real billing adapter. The exact post-grace hosted-read cutoff versus membership-based read until physical cleanup is a contract/implementation ambiguity; no rule change was made here.
 
-Exact next action: commit/push checkpoint 8, then continue the broader authority/Pro/race matrix. A future authoring-workspace switch needs an explicit isolated-data design; do not merge a restored Company into the existing primary DB. Resolve the hosted-read cutoff ambiguity before main integration.
+Exact next action: commit/push checkpoint 9, then continue the broader authority/Pro/race matrix. A future authoring-workspace switch needs an explicit isolated-data design; do not merge a restored Company into the existing primary DB. Resolve the hosted-read cutoff ambiguity before main integration.
 
 Uncommitted work at this checkpoint: none expected after commit; run `git status --short` to verify.
 

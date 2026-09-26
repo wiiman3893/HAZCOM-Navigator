@@ -292,6 +292,40 @@ test('Pro downgrade with an existing client Administrator removes stale inherite
  await assertSucceeds(getDoc(doc(context(admin).firestore(),`companies/${companyId}`)));
 });
 
+test('Pro seat and downgrade events reject stale Company coverage ownership',async()=>{
+ const {applyTrustedBillingEvent}=await import('../lib/commercial-admin.js');
+ const owner='stale-pro-owner',seat='stale-pro-seat',companyId='stale-pro-client';
+ for(const uid of [owner,seat]){
+  await auth.createUser({uid,email:`${uid}@example.com`});
+  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+  await call('bootstrapAccount',uid,{});
+ }
+ const started={id:'stale-start',type:'subscription_started',subscriptionId:owner,version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:'pro',cadence:'monthly'}};
+ await applyTrustedBillingEvent(owner,started);
+ await call('createCompany',owner,{companyId,company});
+ const coverRef=db.doc(`companies/${companyId}/coverage/current`);
+ const addSeat={...started,id:'stale-seat-add',version:2,type:'seat_added',payload:{uid:seat}};
+ await coverRef.update({accountId:'replacement-owner'});
+ await assert.rejects(applyTrustedBillingEvent(owner,addSeat));
+ assert.equal((await db.doc(`companies/${companyId}/memberships/${seat}`).get()).exists,false);
+ assert.equal((await db.doc(`subscriptions/${owner}`).get()).get('lastVersion'),1);
+ await coverRef.update({accountId:owner,state:'ending'});
+ await assert.rejects(applyTrustedBillingEvent(owner,addSeat));
+ await coverRef.update({state:'active'});
+ await applyTrustedBillingEvent(owner,addSeat);
+ assert.equal((await db.doc(`companies/${companyId}/memberships/${seat}`).get()).get('role'),'manager');
+ const paidThrough=(await db.doc(`subscriptions/${owner}`).get()).get('paidThrough');
+ await applyTrustedBillingEvent(owner,{...started,id:'stale-schedule',version:3,type:'subscription_downgrade_scheduled',payload:{tierId:'company',retainedCompanyId:companyId}});
+ const renewal={...started,id:'stale-renew',version:4,type:'subscription_renewed',effectiveAt:paidThrough,payload:{administratorUid:owner}};
+ await coverRef.update({accountId:'replacement-owner'});
+ await assert.rejects(applyTrustedBillingEvent(owner,renewal,Date.parse(paidThrough)+1));
+ assert.equal((await db.doc(`subscriptions/${owner}`).get()).get('plan'),'pro');
+ assert.equal((await db.doc(`companies/${companyId}/memberships/${owner}`).get()).get('role'),'manager');
+ await coverRef.update({accountId:owner});
+ await applyTrustedBillingEvent(owner,renewal,Date.parse(paidThrough)+1);
+ assert.equal((await db.doc(`companies/${companyId}/memberships/${owner}`).get()).get('role'),'administrator');
+});
+
 test('Pro Demo switch preserves three Companies and parks unselected Companies in Company Demo',async()=>{
  const uid='demo-switch-v1';await auth.createUser({uid,email:`${uid}@example.com`});
  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});

@@ -17,12 +17,14 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
   if(next===state)return {applied:false,version:state.lastVersion};
   const seatId=String(event.payload.uid??'');
   const related=event.type==='seat_added'||event.type==='seat_removed'?state.coveredCompanyIds:[];
+  const relatedCoverage=await Promise.all(related.map(companyId=>tx.get(db.doc(`companies/${companyId}/coverage/current`))));
   const ending=state.coveredCompanyIds.filter(companyId=>!next.coveredCompanyIds.includes(companyId));
   const endingCoverage=await Promise.all(ending.map(companyId=>tx.get(db.doc(`companies/${companyId}/coverage/current`))));
   const activeCoverage=event.type==='subscription_renewed'||event.type==='payment_recovered'?await Promise.all(state.coveredCompanyIds.map(companyId=>tx.get(db.doc(`companies/${companyId}/coverage/current`)))):[];
   if(activeCoverage.some(cover=>cover.get('state')==='deleting'))denied('Coverage cleanup has started; recovery requires support.');
   const retained=next.plan==='company'&&next.coveredCompanyIds.length===1?next.coveredCompanyIds[0]:null;
   const retainedCompany=retained?await tx.get(db.doc(`companies/${retained}`)):null;
+  const retainedCoverage=retained&&state.plan==='pro'&&next.plan==='company'?await tx.get(db.doc(`companies/${retained}/coverage/current`)):null;
   const adminUid=String(event.payload.administratorUid??'');
   const adminMember=retained&&adminUid?await tx.get(db.doc(`companies/${retained}/memberships/${adminUid}`)):null;
   const adminAccount=retained&&adminUid?await tx.get(db.doc(`accounts/${adminUid}`)):null;
@@ -34,6 +36,8 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
   if(event.type==='seat_added'&&!seatAccount?.exists)denied('Pro seat must have an authenticated Account.');
   const members=await Promise.all(related.map(companyId=>tx.get(db.doc(`companies/${companyId}/memberships/${seatId}`))));
   if(event.type==='seat_added'&&resolveCommercial(next as unknown as Record<string,unknown>).plan!=='pro')denied('Only Pro has billable seats.');
+  if(relatedCoverage.some(cover=>!cover.exists||cover.get('accountId')!==accountId||!['active',undefined].includes(cover.get('state'))))denied('Pro seat change requires current active Company coverage.');
+  if(retainedCoverage&&(!retainedCoverage.exists||retainedCoverage.get('accountId')!==accountId||!['active',undefined].includes(retainedCoverage.get('state'))))denied('Retained Company coverage changed before downgrade.');
   if(event.type==='seat_added'||event.type==='seat_removed'){
    for(let i=0;i<related.length;i++){
     const companyId=related[i],previous=members[i],memberRef=db.doc(`companies/${companyId}/memberships/${seatId}`),indexRef=db.doc(`accounts/${seatId}/memberships/${companyId}`);

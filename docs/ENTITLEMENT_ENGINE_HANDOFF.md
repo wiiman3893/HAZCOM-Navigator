@@ -53,4 +53,6 @@ Ordinary billing renewal now uses a persisted calendar anchor. This prevents a J
 
 Scheduled Pro-to-Company downgrade now removes every obsolete inherited Pro Membership in the retained Company when that Company already has an Administrator, including the selected billing owner's inherited Manager index. Direct Memberships survive. If no Administrator exists, the selected active authenticated member is promoted instead. Emulator Rules tests verify that an inherited-only owner loses Company read access after downgrade while a former Pro seat keeps its direct Member role.
 
+Before Pro seat changes or the retained-Company Membership changes of a scheduled downgrade, the trusted billing transaction rechecks the Company's current active coverage owner. This prevents a stale subscription Company list from granting inherited Membership to a transferred or ending Company. Legacy coverage documents with no explicit `state` remain active when their owner still matches; explicit ending/deleting states are denied. Emulator tests exercise mismatch and retry with the same synthetic event ID.
+
 The frozen branch `frozen/commercial-entitlement-v1-2026-09-25` records this validated local/emulator foundation. It is not a claim that billing, production email, cloud backup delivery, or cloud cleanup have been deployed. Never repoint this or any earlier frozen branch.
