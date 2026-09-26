@@ -1,5 +1,7 @@
 # Scalable staged publication — September 22, 2026
 
+**Later cloud status:** The schema-2 backend and rules reached `hazcom-navigator-dev` on September 25, 2026. Native publication acceptance remains blocked at the HTTPS invocation layer; the Firebase identity/Company checks have not yet been reached in the real Windows run. The [deployment handoff](FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md) records the deployed functions and outstanding evidence. This document's emulator results remain valid local evidence, not live-cloud acceptance.
+
 **Windows UI update (September 25, 2026):** The native Reports & Export screen is now connected to the existing schema-2 service through a readiness/retry controller. Its local SDS hash check compares bytes with the authoring-time integrity record, and its current-revision display is confirmed from the Company pointer. See [Windows publication handoff](WINDOWS_PUBLICATION_HANDOFF.md). This is a local/emulator source update; schema-2 has not been deployed to the development Firebase project.
 
 This implementation builds on `f43f509bfefb544ef9122da8a33198a5e1a6ebf4`. Existing frozen/archive branches remain immutable. The application publisher now uses schema 2 staging; schema 1 endpoints remain explicitly isolated for development compatibility and regression tests. Authentication, subscriptions, Membership/Company semantics, the canonical SQLite schema and training-event reconciliation were not redesigned.

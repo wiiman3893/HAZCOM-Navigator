@@ -1,7 +1,7 @@
 {
   "name":"@hazcom/firebase-functions","private":true,"type":"module","main":"lib/index.js",
   "engines":{"node":"22"},
-  "scripts":{"build":"npm run build -w @hazcom/core && tsc","test":"npm run build && node --test test/*.test.mjs","deploy":"cd .. && npx -y firebase-tools@latest deploy --only functions --project hazcom-navigator-dev"},
-  "dependencies":{"@hazcom/core":"0.1.0","firebase-admin":"14.4.0","firebase-functions":"7.4.0"},
+  "scripts":{"build":"npm run build -w @hazcom/core && tsc && node scripts/package-core.cjs","test":"npm run build && node --test test/*.test.mjs","deploy":"cd .. && npx -y firebase-tools@latest deploy --only functions --project hazcom-navigator-dev"},
+  "dependencies":{"@hazcom/core":"file:vendor/core","firebase-admin":"14.4.0","firebase-functions":"7.4.0"},
   "devDependencies":{"typescript":"7.0.2","@firebase/rules-unit-testing":"^5.0.0","firebase":"12.19.0"}
 }

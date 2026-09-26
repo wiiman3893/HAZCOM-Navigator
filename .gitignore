@@ -16,6 +16,7 @@ apps/mobile/ios/
 
 # Firebase generated output and private operator credentials
 firebase/functions/lib/
+firebase/functions/vendor/
 *service-account*.json
 *serviceAccount*.json
 application_default_credentials.json

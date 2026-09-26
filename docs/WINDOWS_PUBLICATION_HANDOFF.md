@@ -1,5 +1,7 @@
 # Windows schema-2 publication workflow — September 25, 2026
 
+**Later cloud status:** The matching backend was deployed to `hazcom-navigator-dev`, but native live acceptance is pending an explicit Cloud Run HTTPS invoker setting. The real app restored Account/Company/role/coverage, then reported `internal [0]` opening authoring because Cloud Run rejected `getCompanyCapabilities` before its Firebase handler. No real-cloud publication result exists yet. See [deployment handoff](FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md). The description below records the original local/emulator checkpoint.
+
 The Windows Reports & Export screen now exposes publication for an authenticated Company Administrator or HAZCOM Manager. This is a source and local/emulator checkpoint. The schema-2 Functions, rules and indexes have **not** been deployed to the development Firebase project, and no live Company was published by this task.
 
 ## Application boundary

@@ -1,5 +1,9 @@
 # Codex handoff — Firebase checkpoint
 
+## Schema-2 development deployment — native acceptance pending
+
+The September 25, 2026 deployment sent current schema-2 Functions, Firestore rules/indexes and Storage rules to `hazcom-navigator-dev`. A corrected Functions package now installs its local private core dependency in Cloud Build. The real Windows app restored the expected Google Account/Company but authoring hit `internal [0]`; Cloud Run logs show the new capability endpoint rejects invocation before Firebase callable authorization. Approval to set the HTTPS invoker explicitly is pending. No live schema-2 publication, SDS authorization or independent receiving SQLite result may be claimed. See [`docs/FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md`](../docs/FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md). Existing sections below describe earlier checkpoints.
+
 ## Commercial entitlement V1 source checkpoint
 
 See [Commercial Contract V1](../docs/COMMERCIAL_CONTRACT_V1.md) and [the entitlement handoff](../docs/ENTITLEMENT_ENGINE_HANDOFF.md). The local Functions bootstrap Demo and gate Company creation, invitations, and both publication schemas through resolved capabilities. Synthetic trusted billing events, Pro-seat inheritance, a takeover transaction, backup-email verification, and emulator-only coverage cleanup have tests. Production email/cloud backup delivery, scheduled cleanup, and real billing integration remain future work. This source has **not** been deployed to the development Firebase project and must not be treated as the live contract.

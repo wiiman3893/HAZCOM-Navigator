@@ -1,5 +1,9 @@
 # Implementation status
 
+## Firebase schema-2 development deployment — live acceptance pending
+
+On September 25, 2026, the coordinated schema-2 Functions, Firestore rules/indexes and Storage rules were deployed to `hazcom-navigator-dev`. The Functions package was fixed to include its private `@hazcom/core` dependency. The native app restored the existing Google Account and Company context, but opening authoring is blocked by Cloud Run's invocation setting before Firebase callable authorization runs. No schema-2 real-cloud publication or replica has been accepted yet. See [the deployment handoff](FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md) for exact evidence and remaining checks. Earlier sections below describe their historical checkpoints.
+
 ## Windows schema-2 publication UI — local/emulator checkpoint
 
 Reports & Export now has readiness, Publish/Retry, staged progress, current revision and local-unpublished-change status for an authorized Manager/Administrator. Readiness checks the Company-scoped projection, schema-2 plan, capability/role, cloud Company context and locally recorded SDS SHA-256. The existing publisher remains authoritative for staging, finalization and idempotent resume. Controller and browser acceptance tests use synthetic data; schema-2 backend validation uses Firebase emulators. See [Windows publication handoff](WINDOWS_PUBLICATION_HANDOFF.md). This source has **not** been deployed to the development Firebase project.
