@@ -87,13 +87,21 @@ export function proratedCents(fullTermCents:number,termStart:number,termEnd:numb
 export type BillingEventType='subscription_started'|'subscription_renewed'|'subscription_upgrade'|'subscription_downgrade_scheduled'|'subscription_cancel_at_period_end'|'payment_failed'|'payment_recovered'|'seat_added'|'seat_removed'|'coverage_transferred';
 export interface BillingEvent {id:string;type:BillingEventType;subscriptionId:string;version:number;effectiveAt:string;payload:Record<string,unknown>;source:string;}
 export interface BillingAdjustment {eventId:string;kind:'upgrade'|'seat_add';creditCents:number;chargeCents:number;cadence:Cadence;}
-export interface CommercialState {subscriptionId:string;plan:string;demoType?:DemoType;tierId?:string;catalogVersion:string;cadence?:Cadence;priceVersion?:string;termStartedAt?:string;basePriceCents?:number;seatPriceCents?:number;billingAdjustments?:BillingAdjustment[];paidThrough?:string;graceEndsAt?:string;cancelAtPeriodEnd?:boolean;seatIds:string[];coveredCompanyIds:string[];selectedDemoCompanyId?:string|null;pendingDowngrade?:{tierId:string;retainedCompanyId:string;effectiveAt:string};lastVersion:number;appliedEventIds:string[];audit:{id:string;type:BillingEventType;at:string;source:string}[];}
+export interface CommercialState {subscriptionId:string;plan:string;demoType?:DemoType;tierId?:string;catalogVersion:string;cadence?:Cadence;priceVersion?:string;termStartedAt?:string;basePriceCents?:number;seatPriceCents?:number;billingAdjustments?:BillingAdjustment[];paidThrough?:string;graceEndsAt?:string;paymentFailureAt?:string;cancelAtPeriodEnd?:boolean;seatIds:string[];coveredCompanyIds:string[];selectedDemoCompanyId?:string|null;pendingDowngrade?:{tierId:string;retainedCompanyId:string;effectiveAt:string};lastVersion:number;appliedEventIds:string[];audit:{id:string;type:BillingEventType;at:string;source:string}[];}
 /** Pure provider-neutral transition. The trusted adapter must authenticate the event source. */
 export function applyBillingEvent(state:CommercialState,event:BillingEvent,catalog:Readonly<Record<string,CatalogPlan>>=DEVELOPMENT_CATALOG):CommercialState {
- if(event.subscriptionId!==state.subscriptionId||!event.id||!event.source)throw Error('Invalid billing event identity');
- if(state.appliedEventIds.includes(event.id))return state;
+ if(event.subscriptionId!==state.subscriptionId||!event.id||!event.source||!Number.isSafeInteger(event.version)||event.version<1||!event.payload||typeof event.payload!=='object')throw Error('Invalid billing event identity');
+ if(state.appliedEventIds.includes(event.id)){
+  const prior=state.audit.find(item=>item.id===event.id);
+  if(!prior||prior.type!==event.type||prior.at!==event.effectiveAt||prior.source!==event.source)throw Error('Billing event ID reused with different identity');
+  return state;
+ }
  if(event.version!==state.lastVersion+1)throw Error('Out-of-order billing event');
  const when=new Date(event.effectiveAt);if(!Number.isFinite(when.getTime()))throw Error('Invalid event time');
+ const current=resolveCommercial(state as unknown as Record<string,unknown>,when.getTime(),catalog);
+ if(event.type==='subscription_started'&&current.plan!=='demo')throw Error('Subscription already started');
+ if(event.type==='subscription_upgrade'&&current.plan===null)throw Error('Unknown subscription to upgrade');
+ if(['subscription_cancel_at_period_end','subscription_downgrade_scheduled','payment_failed','subscription_renewed','payment_recovered'].includes(event.type)&&(!current.plan||current.plan==='demo'))throw Error('Paid subscription required');
  const next:CommercialState={...state,seatIds:[...state.seatIds],coveredCompanyIds:[...state.coveredCompanyIds],billingAdjustments:[...(state.billingAdjustments??[])],appliedEventIds:[...state.appliedEventIds,event.id],audit:[...state.audit,{id:event.id,type:event.type,at:event.effectiveAt,source:event.source}],lastVersion:event.version};
  const target=String(event.payload.tierId??'');
  if(['subscription_started','subscription_upgrade'].includes(event.type)) {
@@ -120,9 +128,11 @@ export function applyBillingEvent(state:CommercialState,event:BillingEvent,catal
   next.termStartedAt=preserveAnniversary?state.termStartedAt??event.effectiveAt:event.effectiveAt;
   const paid=event.payload.paidThrough;next.paidThrough=typeof paid==='string'?paid:preserveAnniversary?state.paidThrough:nextAnniversary(when,cadence).toISOString();
   if(!Number.isFinite(Date.parse(next.paidThrough??''))||Date.parse(next.paidThrough!)<=when.getTime())throw Error('Invalid paid-through date');
-   next.graceEndsAt=new Date(Date.parse(next.paidThrough!)+GRACE_DAYS*DAY_MS).toISOString();next.cancelAtPeriodEnd=false;
+   next.graceEndsAt=new Date(Date.parse(next.paidThrough!)+GRACE_DAYS*DAY_MS).toISOString();next.cancelAtPeriodEnd=false;delete next.paymentFailureAt;
  } else if(event.type==='subscription_renewed'||event.type==='payment_recovered') {
   if(!next.cadence)throw Error('Missing billing cadence');
+  if(event.type==='subscription_renewed'&&next.cancelAtPeriodEnd)throw Error('Cancelled subscription cannot renew');
+  if(event.type==='subscription_renewed'&&when.getTime()<Date.parse(next.paidThrough??''))throw Error('Renewal cannot precede term end');
   if(event.type==='subscription_renewed'&&next.pendingDowngrade&&when.getTime()>=Date.parse(next.pendingDowngrade.effectiveAt)){
    const downgrade=catalog[next.pendingDowngrade.tierId];
    if(!downgrade||downgrade.family!=='company')throw Error('Invalid scheduled Company tier');
@@ -136,21 +146,36 @@ export function applyBillingEvent(state:CommercialState,event:BillingEvent,catal
   }
   const base=new Date(Math.max(when.getTime(),Date.parse(next.paidThrough??event.effectiveAt)));
   next.termStartedAt=base.toISOString();
-  next.paidThrough=nextAnniversary(base,next.cadence).toISOString();next.graceEndsAt=new Date(Date.parse(next.paidThrough)+GRACE_DAYS*DAY_MS).toISOString();next.cancelAtPeriodEnd=false;
- } else if(event.type==='subscription_cancel_at_period_end')next.cancelAtPeriodEnd=true;
+  next.paidThrough=nextAnniversary(base,next.cadence).toISOString();next.graceEndsAt=new Date(Date.parse(next.paidThrough)+GRACE_DAYS*DAY_MS).toISOString();delete next.paymentFailureAt;
+  if(event.type==='subscription_renewed')next.cancelAtPeriodEnd=false;
+ } else if(event.type==='payment_failed'){
+  const priorEnd=Date.parse(next.paidThrough??'');if(!Number.isFinite(priorEnd))throw Error('Missing paid term');
+  const graceStart=Math.max(priorEnd,when.getTime());
+  next.paidThrough=new Date(graceStart).toISOString();next.graceEndsAt=new Date(graceStart+GRACE_DAYS*DAY_MS).toISOString();next.paymentFailureAt=event.effectiveAt;
+ } else if(event.type==='subscription_cancel_at_period_end'){
+  if(current.status!=='active')throw Error('Only an active paid term can be cancelled');
+  next.cancelAtPeriodEnd=true;
+ }
  else if(event.type==='subscription_downgrade_scheduled'){
+  if(current.plan!=='pro'||current.status!=='active'||when.getTime()>=Date.parse(next.paidThrough??''))throw Error('Active Pro term required for downgrade');
   if(catalog[target]?.family!=='company'||!next.coveredCompanyIds.includes(String(event.payload.retainedCompanyId))||!next.paidThrough)throw Error('Select an existing Company for downgrade');
   next.pendingDowngrade={tierId:target,retainedCompanyId:String(event.payload.retainedCompanyId),effectiveAt:next.paidThrough??''};
  } else if(event.type==='seat_added'){
   const seat=String(event.payload.uid??'');const plan=catalogPlan(next,catalog);
+  if(plan?.family!=='pro'||current.status!=='active')throw Error('Active paid Pro plan required for seat');
   if(!seat||!plan||next.seatIds.includes(seat)||!mayCreateWithinLimit(plan.limits.maxProSeats,next.seatIds.length))throw Error('Pro seat limit or duplicate seat');
   if(!next.cadence||!next.paidThrough||!next.termStartedAt||!Number.isSafeInteger(next.seatPriceCents))throw Error('Seat price term missing');
   next.billingAdjustments!.push({eventId:event.id,kind:'seat_add',creditCents:0,chargeCents:proratedCents(next.seatPriceCents!,Date.parse(next.termStartedAt),Date.parse(next.paidThrough),when.getTime()),cadence:next.cadence});
   next.seatIds.push(seat);
  } else if(event.type==='seat_removed'){
-  const seat=String(event.payload.uid??'');if(next.seatIds[0]===seat)throw Error('Cannot remove base Pro seat');
+  const seat=String(event.payload.uid??'');if(current.plan!=='pro'||!next.seatIds.includes(seat))throw Error('Pro seat missing');
+  if(next.seatIds[0]===seat)throw Error('Cannot remove base Pro seat');
   next.seatIds=next.seatIds.filter(id=>id!==seat);
- } else if(event.type==='coverage_transferred')next.coveredCompanyIds=next.coveredCompanyIds.filter(id=>id!==event.payload.companyId);
+ } else if(event.type==='coverage_transferred'){
+  const companyId=event.payload.companyId;
+  if(typeof companyId!=='string'||!next.coveredCompanyIds.includes(companyId))throw Error('Transferred Company is not covered');
+  next.coveredCompanyIds=next.coveredCompanyIds.filter(id=>id!==companyId);
+ } else throw Error('Unknown billing event type');
  return next;
 }
 export function cleanupEligible(coverage:{subscriptionId:string;graceEndsAt:string},currentCoverage:{subscriptionId:string}|null,now=Date.now()):boolean {

@@ -17,7 +17,7 @@ test('Company and Pro Demo are permanent, bounded, and cannot publish or invite'
   assert.equal(mayAuthorCompany(pro,'b',null),true);
   assert.equal(pro.capabilities.canPublish,false);
   const demoState={subscriptionId:'demo-owner',plan:'demo',demoType:'pro',tierId:'demo_pro',catalogVersion:'v1',seatIds:['demo-owner'],coveredCompanyIds:[],lastVersion:0,appliedEventIds:[],audit:[]};
-  assert.throws(()=>applyBillingEvent(demoState,{id:'fake-seat',type:'seat_added',subscriptionId:'demo-owner',version:1,effectiveAt:'2026-09-25T00:00:00Z',source:'mock',payload:{uid:'extra'}}),/seat limit/);
+  assert.throws(()=>applyBillingEvent(demoState,{id:'fake-seat',type:'seat_added',subscriptionId:'demo-owner',version:1,effectiveAt:'2026-09-25T00:00:00Z',source:'mock',payload:{uid:'extra'}}),/Active paid Pro/);
 });
 
 test('legacy plan names map without role or coverage mutation; paid grace is read/export only',()=>{
@@ -93,6 +93,28 @@ test('upgrade and Pro seat events record provider-neutral proration quotes',()=>
  assert.equal(annual.billingAdjustments[0].creditCents,proratedCents(1000,start,end,change));
  assert.equal(annual.billingAdjustments[0].chargeCents,25000);
  assert.equal(annual.paidThrough,'2027-10-30T00:00:00.000Z');
+});
+
+test('billing lifecycle rejects unsafe transitions and recovers deterministically from payment failure',()=>{
+ const base={subscriptionId:'owner',plan:'pro',tierId:'pro',catalogVersion:'v1',cadence:'monthly',termStartedAt:'2026-10-15T00:00:00Z',paidThrough:'2026-11-15T00:00:00Z',graceEndsAt:'2026-11-29T00:00:00Z',seatIds:['owner','teammate'],coveredCompanyIds:['client'],lastVersion:0,appliedEventIds:[],audit:[]};
+ const event=(id,type,version,effectiveAt,payload={})=>({id,type,version,effectiveAt,subscriptionId:'owner',source:'synthetic',payload});
+ const failed=applyBillingEvent(base,event('fail','payment_failed',1,'2026-11-15T00:00:00Z'));
+ assert.equal(failed.paymentFailureAt,'2026-11-15T00:00:00Z');
+ assert.equal(resolveCommercial(failed,Date.parse('2026-11-16T00:00:00Z')).status,'grace');
+ assert.equal(resolveCommercial(failed,Date.parse('2026-11-16T00:00:00Z')).capabilities.canExportBackup,true);
+ assert.throws(()=>applyBillingEvent(failed,event('seat','seat_added',2,'2026-11-16T00:00:00Z',{uid:'third'})),/Active paid Pro/);
+ assert.throws(()=>applyBillingEvent(failed,event('missing','coverage_transferred',2,'2026-11-16T00:00:00Z',{companyId:'other'})),/not covered/);
+ assert.throws(()=>applyBillingEvent(failed,event('remove','seat_removed',2,'2026-11-16T00:00:00Z',{uid:'absent'})),/seat missing/);
+ assert.throws(()=>applyBillingEvent(failed,event('renew','subscription_renewed',2,'2026-11-14T00:00:00Z')),/Renewal cannot precede/);
+ assert.throws(()=>applyBillingEvent(failed,{...event('fail','payment_failed',1,'2026-11-15T00:00:00Z'),type:'payment_recovered'}),/ID reused/);
+ assert.equal(applyBillingEvent(failed,event('fail','payment_failed',1,'2026-11-15T00:00:00Z')),failed);
+ const recovered=applyBillingEvent(failed,event('recover','payment_recovered',2,'2026-11-18T00:00:00Z'));
+ assert.equal(recovered.paymentFailureAt,undefined);
+ assert.equal(resolveCommercial(recovered,Date.parse('2026-11-19T00:00:00Z')).status,'active');
+ const cancelled=applyBillingEvent(recovered,event('cancel','subscription_cancel_at_period_end',3,'2026-11-20T00:00:00Z'));
+ assert.throws(()=>applyBillingEvent(cancelled,event('bad-renew','subscription_renewed',4,cancelled.paidThrough)),/Cancelled subscription/);
+ assert.throws(()=>applyBillingEvent(base,event('early-downgrade','subscription_downgrade_scheduled',1,base.paidThrough,{tierId:'company',retainedCompanyId:'client'})),/Active Pro term/);
+ assert.throws(()=>applyBillingEvent(base,event('second-start','subscription_started',1,'2026-10-20T00:00:00Z',{tierId:'company',cadence:'monthly'})),/already started/);
 });
 
 test('backup delivery threshold and scoped, expiring single-purpose tokens',async()=>{

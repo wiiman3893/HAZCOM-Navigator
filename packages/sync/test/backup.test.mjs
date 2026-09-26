@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fixture} from './fixtures.mjs';
 import {nodeSqlite,nodeFiles} from '../src/node.js';
-import {exportCompanyBackup,importCompanyBackup} from '../src/backup.js';
+import {exportCompanyBackup,importCompanyBackup,validateCompanyBackup} from '../src/backup.js';
 import {REPLICA_SCHEMA_SQL} from '../src/sqlite.js';
 import {InMemoryBackupDelivery} from '@hazcom/core';
 const migration=await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8');
@@ -20,6 +20,9 @@ test('versioned Company backup restores structured history and SDS into an indep
  try{
   const backup=await exportCompanyBackup(source.sql,source.files,source.company.id);
   assert.equal(backup.manifest.format,'hazcom-company-backup');
+  assert.equal(backup.manifest.version,2);
+  const legacy=structuredClone(backup);legacy.manifest.version=1;delete legacy.manifest.attachmentHash;
+  assert.equal((await validateCompanyBackup(legacy)).companyId,source.company.id);
   assert.equal(backup.attachments.length,20);
   assert.equal(JSON.stringify(backup).includes('firebaseCredential'),false);
   const sent=[],delivery=new InMemoryBackupDelivery({send:async message=>sent.push(message)},1);
@@ -45,10 +48,13 @@ test('backup rejects corrupted records, SDS bytes, ownership and unsupported sch
   const original=await exportCompanyBackup(source.sql,source.files,source.company.id);
   const altered=mutate=>{const copy=structuredClone(original);mutate(copy);return copy;};
   for(const bad of [
-   altered(b=>b.manifest.version=2),
+   altered(b=>b.manifest.version=3),
    altered(b=>b.tables.worker[0].name='tampered'),
    altered(b=>b.attachments[0].base64=Buffer.from('%PDF-bad').toString('base64')),
-   altered(b=>b.attachments[0].ownerId='foreign')
+   altered(b=>b.attachments[0].ownerId='foreign'),
+   altered(b=>{b.attachments[0].sha256='0'.repeat(64);b.attachments[0].base64=Buffer.from('%PDF-changed').toString('base64');}),
+   altered(b=>{b.attachments[0].sizeBytes+=1;}),
+   altered(b=>{b.tables.work_area_product__ownership[0].work_area_id='foreign';b.manifest.recordHash=createHash('sha256').update(JSON.stringify(b.tables)).digest('hex');})
   ]){
    const folder=await mkdtemp(path.join(tmpdir(),'hazcom-backup-reject-'));
    const target=nodeSqlite(path.join(folder,'replica.db'),REPLICA_SCHEMA_SQL+migration),files=await nodeFiles(path.join(folder,'attachments'));
@@ -60,5 +66,24 @@ test('backup rejects corrupted records, SDS bytes, ownership and unsupported sch
   const target=nodeSqlite(path.join(folder,'replica.db'),REPLICA_SCHEMA_SQL+migration),files=await nodeFiles(path.join(folder,'attachments'));
   try{await assert.rejects(importCompanyBackup(broken,target,files));assert.equal(target.db.prepare('SELECT count(*) n FROM company').get().n,0);}
   finally{target.close();}
+ }finally{source.sql.close();}
+});
+
+test('backup preflight rejects cross-Company references and missing links before managed files are staged',async()=>{
+ const source=await fixture('small','backup-preflight');source.sql.db.exec(migration);
+ try{
+  const original=await exportCompanyBackup(source.sql,source.files,source.company.id);
+  const alter=mutate=>{const copy=structuredClone(original);mutate(copy);copy.manifest.recordHash=createHash('sha256').update(JSON.stringify(copy.tables)).digest('hex');return copy;};
+  await assert.rejects(validateCompanyBackup(alter(b=>b.tables.rel_chemical_product_work_area_product_9d42d6cd[0].chemical_product_id='other-company')),/relationship mismatch/);
+  await assert.rejects(validateCompanyBackup(alter(b=>b.tables.rel_worker_work_area_assignment_d30ac2b9.pop())),/relationship mismatch/);
+  await assert.rejects(validateCompanyBackup(alter(b=>b.tables.authoring_versions.push({company_id:'other-company',version:1}))),/crosses Company/);
+  const folder=await mkdtemp(path.join(tmpdir(),'hazcom-backup-preflight-'));
+  const target=nodeSqlite(path.join(folder,'replica.db'),REPLICA_SCHEMA_SQL+migration);
+  let staged=0;
+  try{
+   await assert.rejects(importCompanyBackup(alter(b=>b.tables.rel_worker_work_area_assignment_d30ac2b9.pop()),target,{stage:async()=>{staged++;return 'unexpected';}}));
+   assert.equal(staged,0);
+   assert.equal(target.db.prepare('SELECT count(*) n FROM company').get().n,0);
+  }finally{target.close();}
  }finally{source.sql.close();}
 });

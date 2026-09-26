@@ -12,6 +12,55 @@ const need=(condition,message)=>{if(!condition)throw Error(message);};
 const placeholders=values=>values.map(()=>'?').join(',');
 const ordered=rows=>rows.sort((a,b)=>String(a.id).localeCompare(String(b.id)));
 const selectIds=async(sql,table,column,ids)=>ids.length?await sql.select(`SELECT * FROM ${table} WHERE ${column} IN (${placeholders(ids)}) ORDER BY ${table==='authoring_sds_integrity'?'attachment_id':'id'}`,ids):[];
+const attachmentDescriptors=attachments=>attachments.map(({attachmentId,ownerId,sizeBytes,sha256})=>({attachmentId,ownerId,sizeBytes,sha256})).sort((a,b)=>a.attachmentId.localeCompare(b.attachmentId));
+const expectedTables=['company',...entitySpec.flatMap(([kind])=>[kind,`${kind}__ownership`]),...links.map(([name])=>name),'dm_attachments','authoring_sds_integrity','dm_change_history','authoring_versions'];
+
+function validateRelationships(tables,companyId){
+ const ids={company:new Set([companyId])};
+ for(const [kind,parent] of entitySpec){
+  const entities=tables[kind],owners=tables[`${kind}__ownership`],entityIds=new Set(entities.map(row=>row.id));
+  need(entityIds.size===entities.length&&entities.every(row=>validId(row.id))&&owners.length===entities.length,`Invalid ${kind} IDs or ownership count`);
+  need(new Set(owners.map(row=>row.child_id)).size===owners.length&&owners.every(row=>entityIds.has(row.child_id)&&ids[parent].has(row[`${parent}_id`])),`Backup ${kind} crosses Company ownership`);
+  ids[kind]=entityIds;
+ }
+ for(const [table,childColumn,child] of links){
+  const parent=table.startsWith('rel_chemical_')?'chemical_product':'worker';
+  const rows=tables[table];
+  need(rows.length===ids[child].size&&new Set(rows.map(row=>row[childColumn])).size===rows.length&&rows.every(row=>ids[child].has(row[childColumn])&&ids[parent].has(row[`${parent}_id`])),`Backup ${table} relationship mismatch`);
+ }
+ need(tables.dm_attachments.every(row=>validId(row.id)&&row.owner_type==='chemical_product'&&ids.chemical_product.has(row.owner_id)&&Number.isSafeInteger(row.size_bytes)&&row.size_bytes>=0),'Backup SDS ownership mismatch');
+ const attachmentIds=new Set(tables.dm_attachments.map(row=>row.id));
+ need(attachmentIds.size===tables.dm_attachments.length,'Duplicate backup SDS ID');
+ need(tables.authoring_sds_integrity.every(row=>attachmentIds.has(row.attachment_id)&&/^[a-f0-9]{64}$/.test(row.sha256)),'Backup SDS integrity metadata mismatch');
+ need(tables.authoring_versions.every(row=>row.company_id===companyId),'Backup authoring version crosses Company');
+ need(tables.dm_change_history.every(row=>{
+  try{return JSON.parse(row.changes_json).companyId===companyId;}catch{return false;}
+ }),'Backup history crosses Company');
+}
+
+/** Validate a portable package before any SQLite or managed-file mutation. */
+export async function validateCompanyBackup(packageData){
+ const {manifest,tables,attachments}=packageData??{};
+ need(manifest?.format==='hazcom-company-backup'&&[1,2].includes(manifest.version)&&validId(manifest.companyId),'Unsupported backup manifest');
+ need(tables&&typeof tables==='object'&&Array.isArray(attachments),'Malformed backup');
+ need(Object.keys(tables).sort().join('|')===expectedTables.slice().sort().join('|')&&expectedTables.every(t=>Array.isArray(tables[t])),'Unsupported backup tables');
+ need(await digest(new TextEncoder().encode(JSON.stringify(tables)))===manifest.recordHash,'Backup records hash changed');
+ need(tables.company.length===1&&tables.company[0].id===manifest.companyId,'Backup Company mismatch');
+ need(attachments.length===manifest.attachmentCount&&tables.dm_attachments.length===attachments.length,'Backup SDS count mismatch');
+ if(manifest.version===2)need(await digest(new TextEncoder().encode(JSON.stringify(attachmentDescriptors(attachments))))===manifest.attachmentHash,'Backup SDS manifest changed');
+ validateRelationships(tables,manifest.companyId);
+ const rows=new Map(tables.dm_attachments.map(row=>[row.id,row]));
+ const integrity=new Map(tables.authoring_sds_integrity.map(row=>[row.attachment_id,row.sha256]));
+ for(const file of attachments){
+  need(validId(file.attachmentId)&&validId(file.ownerId)&&Number.isSafeInteger(file.sizeBytes)&&file.sizeBytes>=0&&/^[a-f0-9]{64}$/.test(file.sha256)&&typeof file.base64==='string'&&/^[A-Za-z0-9+/]*={0,2}$/.test(file.base64),'Invalid SDS payload');
+  const row=rows.get(file.attachmentId);
+  need(row&&row.owner_id===file.ownerId&&row.size_bytes===file.sizeBytes&&(!integrity.has(file.attachmentId)||integrity.get(file.attachmentId)===file.sha256),'Backup SDS ownership mismatch');
+  const bytes=decodeBase64(file.base64);
+  need(bytes.length===file.sizeBytes&&await digest(bytes)===file.sha256,'Backup SDS size or hash changed');
+ }
+ need(new Set(attachments.map(file=>file.attachmentId)).size===attachments.length,'Duplicate backup SDS payload');
+ return {companyId:manifest.companyId,attachmentCount:attachments.length};
+}
 
 /** Node/dev adapter. Export is scoped by ownership, never by an unqualified table dump. */
 export async function exportCompanyBackup(sql,files,companyId){
@@ -38,26 +87,21 @@ export async function exportCompanyBackup(sql,files,companyId){
   attachments.push({attachmentId:a.id,ownerId:a.owner_id,sizeBytes:bytes.length,sha256,base64:encodeBase64(bytes)});
  }
  const recordHash=await digest(new TextEncoder().encode(JSON.stringify(tables)));
- return {manifest:{format:'hazcom-company-backup',version:1,companyId,recordHash,attachmentCount:attachments.length,createdAt:new Date().toISOString()},tables,attachments};
+ validateRelationships(tables,companyId);
+ const attachmentHash=await digest(new TextEncoder().encode(JSON.stringify(attachmentDescriptors(attachments))));
+ return {manifest:{format:'hazcom-company-backup',version:2,companyId,recordHash,attachmentHash,attachmentCount:attachments.length,createdAt:new Date().toISOString()},tables,attachments};
 }
 
 /** Import into a separate fresh database; caller switches to it only after this succeeds. */
 export async function importCompanyBackup(packageData,sql,files){
  const {manifest,tables,attachments}=packageData??{};
- need(manifest?.format==='hazcom-company-backup'&&manifest.version===1&&validId(manifest.companyId),'Unsupported backup manifest');
- need(tables&&typeof tables==='object'&&Array.isArray(attachments),'Malformed backup');
- const expected=['company',...entitySpec.flatMap(([kind])=>[kind,`${kind}__ownership`]),...links.map(([name])=>name),'dm_attachments','authoring_sds_integrity','dm_change_history','authoring_versions'];
- need(Object.keys(tables).sort().join('|')===expected.sort().join('|')&&expected.every(t=>Array.isArray(tables[t])),'Unsupported backup tables');
- need(await digest(new TextEncoder().encode(JSON.stringify(tables)))===manifest.recordHash,'Backup records hash changed');
- need(tables.company.length===1&&tables.company[0].id===manifest.companyId,'Backup Company mismatch');
- need(attachments.length===manifest.attachmentCount&&tables.dm_attachments.length===attachments.length,'Backup SDS count mismatch');
+ await validateCompanyBackup(packageData);
+ const existing=await sql.select('SELECT id FROM company LIMIT 1');
+ need(existing.length===0,'Restore destination must be a fresh SQLite workspace');
  const prepared=[];
  for(const file of attachments){
-  need(validId(file.attachmentId)&&validId(file.ownerId)&&typeof file.base64==='string'&&/^[A-Za-z0-9+/]*={0,2}$/.test(file.base64),'Invalid SDS payload');
   const bytes=decodeBase64(file.base64);
-  need(bytes.length===file.sizeBytes&&await digest(bytes)===file.sha256,'Backup SDS size or hash changed');
   const row=tables.dm_attachments.find(a=>a.id===file.attachmentId);
-  need(row&&row.owner_id===file.ownerId&&row.owner_type==='chemical_product'&&row.size_bytes===file.sizeBytes&&tables.chemical_product.some(p=>p.id===file.ownerId),'Backup SDS ownership mismatch');
   const localPath=await files.stage(manifest.companyId,file.attachmentId,bytes);
   prepared.push({...row,relative_path:localPath});
  }
