@@ -1,6 +1,6 @@
 import {FieldValue} from 'firebase-admin/firestore';
 import {getStorage} from 'firebase-admin/storage';
-import {applyBillingEvent,resolveCommercial,cleanupEligible,type BillingEvent,type CommercialState} from '@hazcom/core';
+import {applyBillingEvent,resolveCommercial,planCoverageCleanup,type BillingEvent,type CommercialState} from '@hazcom/core';
 import {db,denied} from './access.js';
 
 /** Trusted adapter only: deliberately not exported as a callable Function. */
@@ -12,8 +12,9 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
   if(!snapshot.exists)throw Error('Subscription missing');
   const raw=snapshot.data()!;
   const state:CommercialState={subscriptionId:accountId,plan:raw.plan,demoType:raw.demoType,tierId:raw.tierId,catalogVersion:raw.catalogVersion??'v1',cadence:raw.cadence,priceVersion:raw.priceVersion,termStartedAt:raw.termStartedAt,basePriceCents:raw.basePriceCents,seatPriceCents:raw.seatPriceCents,billingAdjustments:raw.billingAdjustments??[],paidThrough:raw.paidThrough,graceEndsAt:raw.graceEndsAt,paymentFailureAt:raw.paymentFailureAt,cancelAtPeriodEnd:raw.cancelAtPeriodEnd,seatIds:raw.seatIds??[accountId],coveredCompanyIds:raw.coveredCompanyIds??[],selectedDemoCompanyId:raw.selectedDemoCompanyId,pendingDowngrade:raw.pendingDowngrade,lastVersion:raw.lastVersion??0,appliedEventIds:raw.appliedEventIds??[],audit:raw.audit??[]};
-  if(state.appliedEventIds.includes(event.id))return {applied:false,version:state.lastVersion};
-  const next=applyBillingEvent(state,event),seatId=String(event.payload.uid??'');
+  const next=applyBillingEvent(state,event);
+  if(next===state)return {applied:false,version:state.lastVersion};
+  const seatId=String(event.payload.uid??'');
   const related=event.type==='seat_added'||event.type==='seat_removed'?state.coveredCompanyIds:[];
   const ending=state.coveredCompanyIds.filter(companyId=>!next.coveredCompanyIds.includes(companyId));
   const endingCoverage=await Promise.all(ending.map(companyId=>tx.get(db.doc(`companies/${companyId}/coverage/current`))));
@@ -138,10 +139,28 @@ export async function releaseProCompany(ownerUid:string,companyId:string,release
  });
 }
 
-/** Deliberately emulator-only; never deploy or invoke against a real Company. */
-export async function cleanupExpiredCompanyInEmulator(companyId:string,expectedOwner:string,cleanupId:string,now=Date.now()){
+function requireCleanupEmulator(companyId:string,expectedOwner:string,cleanupId:string){
  if(!process.env.FIRESTORE_EMULATOR_HOST||!process.env.FIREBASE_STORAGE_EMULATOR_HOST||!String(process.env.GCLOUD_PROJECT).startsWith('demo-'))throw Error('Commercial deletion is permitted only in a demo Firebase emulator project.');
  if(!/^[A-Za-z0-9_-]{1,128}$/.test(companyId)||!/^[A-Za-z0-9_-]{1,128}$/.test(expectedOwner)||!/^[A-Za-z0-9_-]{1,128}$/.test(cleanupId))throw Error('Invalid cleanup identity');
+}
+
+/** Read-only emulator plan, including the exact Firestore subtree and Storage objects at inspection time. */
+export async function planExpiredCompanyCleanupInEmulator(companyId:string,expectedOwner:string,cleanupId:string,now=Date.now()){
+ requireCleanupEmulator(companyId,expectedOwner,cleanupId);
+ const [company,cover,subscription]=await Promise.all([
+  db.doc(`companies/${companyId}`).get(),
+  db.doc(`companies/${companyId}/coverage/current`).get(),
+  db.doc(`subscriptions/${expectedOwner}`).get()
+ ]);
+ if(!company.exists)return {eligible:false,reason:'COMPANY_MISSING',companyId,expectedOwner,deadline:null,firestoreSubtree:null,storageObjects:[]};
+ const decision=planCoverageCleanup(expectedOwner,cover.data(),subscription.data(),now);
+ const storageObjects=decision.eligible?(await getStorage().bucket().getFiles({prefix:`companies/${companyId}/`}))[0].map(file=>file.name):[];
+ return {...decision,companyId,expectedOwner,cleanupId,firestoreSubtree:decision.eligible?`companies/${companyId}`:null,storageObjects};
+}
+
+/** Deliberately emulator-only; never deploy or invoke against a real Company. */
+export async function cleanupExpiredCompanyInEmulator(companyId:string,expectedOwner:string,cleanupId:string,now=Date.now()){
+ requireCleanupEmulator(companyId,expectedOwner,cleanupId);
  const companyRef=db.doc(`companies/${companyId}`),coverRef=db.doc(`companies/${companyId}/coverage/current`),auditRef=db.doc(`commercialCleanupAudit/${cleanupId}`);
  const claimed=await db.runTransaction(async tx=>{
   const [company,cover,subscription,audit]=await Promise.all([tx.get(companyRef),tx.get(coverRef),tx.get(db.doc(`subscriptions/${expectedOwner}`)),tx.get(auditRef)]);
@@ -149,10 +168,8 @@ export async function cleanupExpiredCompanyInEmulator(companyId:string,expectedO
   if(!cover.exists||cover.get('accountId')!==expectedOwner)return false;
   if(cover.get('state')==='deleting')return cover.get('cleanupId')===cleanupId;
   if(audit.exists)throw Error('Cleanup ID already used');
-  const resolution=resolveCommercial(subscription.data(),now);
-  const deadline=cover.get('state')==='ending'?Date.parse(cover.get('exportEndsAt')):resolution.graceEndsAt;
-  if(!deadline||!cleanupEligible({subscriptionId:expectedOwner,graceEndsAt:new Date(deadline).toISOString()},{subscriptionId:cover.get('accountId')},now))return false;
-  if(cover.get('state')!=='ending'&&resolution.status!=='expired')return false;
+  const decision=planCoverageCleanup(expectedOwner,cover.data(),subscription.data(),now);
+  if(!decision.eligible)return false;
   tx.update(coverRef,{state:'deleting',cleanupId,updatedAt:FieldValue.serverTimestamp()});
   tx.update(companyRef,{active:false,updatedAt:FieldValue.serverTimestamp()});
   tx.create(auditRef,{cleanupId,companyId,expectedOwner,status:'started',claimedAt:FieldValue.serverTimestamp()});

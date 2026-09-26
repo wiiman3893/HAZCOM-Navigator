@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DEVELOPMENT_CATALOG,resolveCommercial,mayAuthorCompany,mayCreateWithinLimit,enforcePublicationLimits,nextAnniversary,proratedCents,applyBillingEvent,cleanupEligible,backupDeliveryMode,issueBackupToken,redeemBackupToken,InMemoryBackupDelivery} from '../dist/index.js';
+import {DEVELOPMENT_CATALOG,resolveCommercial,resolveCompanyCommercial,planCoverageCleanup,mayAuthorCompany,mayCreateWithinLimit,enforcePublicationLimits,nextAnniversary,proratedCents,applyBillingEvent,cleanupEligible,backupDeliveryMode,issueBackupToken,redeemBackupToken,InMemoryBackupDelivery} from '../dist/index.js';
 
 test('Company and Pro Demo are permanent, bounded, and cannot publish or invite',()=>{
   const company=resolveCommercial({plan:'demo',demoType:'company',selectedDemoCompanyId:'a'},Date.UTC(2100,0,1));
@@ -45,6 +45,23 @@ test('catalog limits and prices are versioned configuration',()=>{
   assert.equal(DEVELOPMENT_CATALOG.company.monthlyUsdCents,1000);
 });
 
+test('Company coverage gates are shared across active, parked, released and expired states',()=>{
+ const now=Date.parse('2026-10-01T00:00:00Z');
+ const paid={plan:'pro',tierId:'pro',paidThrough:'2026-11-01T00:00:00Z',coveredCompanyIds:['a']};
+ assert.equal(resolveCompanyCommercial(paid,{state:'active'},'a',now).capabilities.canAuthor,true);
+ assert.equal(resolveCompanyCommercial(paid,{state:'active'},'b',now).coverageReason,'COMPANY_NOT_COVERED');
+ assert.equal(resolveCompanyCommercial(paid,undefined,'a',now).coverageReason,'NO_COVERAGE');
+ assert.equal(resolveCompanyCommercial(paid,{state:'deleting'},'a',now).capabilities.canExportBackup,false);
+ const released=resolveCompanyCommercial({...paid,coveredCompanyIds:[]},{state:'ending',exportEndsAt:'2026-10-15T00:00:00Z'},'a',now);
+ assert.equal(released.coverageReason,'COVERAGE_ENDING');
+ assert.equal(released.capabilities.canAuthor,false);
+ assert.equal(released.capabilities.canExportBackup,true);
+ assert.equal(released.capabilities.canReadPublished,true);
+ assert.equal(resolveCompanyCommercial(paid,{state:'ending',exportEndsAt:'2026-10-15T00:00:00Z'},'a',Date.parse('2026-10-15T00:00:00Z')).coverageReason,'COVERAGE_ENDED');
+ assert.equal(resolveCompanyCommercial(paid,{state:'ending'},'a',now).capabilities.canExportBackup,false);
+ assert.equal(resolveCompanyCommercial({plan:'demo',demoType:'company',selectedDemoCompanyId:'a',coveredCompanyIds:['a','b']},{state:'active'},'b',now).coverageReason,'DEMO_COMPANY_PARKED');
+});
+
 test('anniversary dates and idempotent ordered billing events',()=>{
   assert.equal(nextAnniversary(new Date('2026-10-15T00:00:00Z'),'monthly').toISOString(),'2026-11-15T00:00:00.000Z');
   assert.equal(nextAnniversary(new Date('2026-10-15T00:00:00Z'),'annual').toISOString(),'2027-10-15T00:00:00.000Z');
@@ -55,7 +72,9 @@ test('anniversary dates and idempotent ordered billing events',()=>{
   assert.equal(paid.paidThrough,'2026-11-15T00:00:00.000Z');
   assert.equal(applyBillingEvent(paid,event),paid);
   assert.throws(()=>applyBillingEvent(paid,{...event,id:'e3',version:3}));
-  const canceled=applyBillingEvent(paid,{...event,id:'e2',version:2,type:'subscription_cancel_at_period_end'});
+  assert.throws(()=>applyBillingEvent(paid,{...event,payload:{tierId:'pro',cadence:'monthly'}}),/ID reused/);
+  assert.throws(()=>applyBillingEvent(paid,{...event,id:'secret',version:2,payload:{...event.payload,providerSecret:'x'}}),/Invalid billing event payload/);
+  const canceled=applyBillingEvent(paid,{...event,id:'e2',version:2,type:'subscription_cancel_at_period_end',payload:{}});
   assert.equal(canceled.cancelAtPeriodEnd,true);
   assert.equal(resolveCommercial(canceled,Date.parse('2026-11-14T00:00:00Z')).capabilities.canAuthor,true);
   assert.equal(resolveCommercial(canceled,Date.parse('2026-11-16T00:00:00Z')).capabilities.canAuthor,false);
@@ -67,6 +86,17 @@ test('cleanup follows current coverage ownership',()=>{
   assert.equal(cleanupEligible(old,{subscriptionId:'company-b'},now),false);
   assert.equal(cleanupEligible(old,{subscriptionId:'pro-a'},now),true);
   assert.equal(cleanupEligible(old,{subscriptionId:'pro-a'},Date.parse('2026-10-28T00:00:00Z')),false);
+});
+
+test('cleanup plans reject replacement coverage, open windows and recovered paid terms',()=>{
+ const now=Date.parse('2026-10-30T00:00:00Z');
+ const expired={plan:'company',paidThrough:'2026-10-01T00:00:00Z',graceEndsAt:'2026-10-15T00:00:00Z'};
+ assert.equal(planCoverageCleanup('old',{accountId:'new',state:'active'},expired,now).reason,'COVERAGE_TRANSFERRED');
+ assert.equal(planCoverageCleanup('old',{accountId:'old',state:'deleting'},expired,now).reason,'CLEANUP_IN_PROGRESS');
+ assert.equal(planCoverageCleanup('old',{accountId:'old',state:'ending',exportEndsAt:'2026-11-01T00:00:00Z'},expired,now).reason,'EXPORT_WINDOW_OPEN');
+ assert.equal(planCoverageCleanup('old',{accountId:'old',state:'ending',exportEndsAt:'bad'},expired,now).reason,'INVALID_DEADLINE');
+ assert.equal(planCoverageCleanup('old',{accountId:'old',state:'active'},{plan:'company',paidThrough:'2026-12-01T00:00:00Z',graceEndsAt:'2026-12-15T00:00:00Z'},now).reason,'EXPORT_WINDOW_OPEN');
+ assert.equal(planCoverageCleanup('old',{accountId:'old',state:'active'},expired,now).eligible,true);
 });
 
 test('scheduled Pro downgrade applies only at renewal and retains the chosen Company',()=>{

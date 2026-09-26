@@ -72,6 +72,31 @@ export function enforcePublicationLimits(capabilities:Capabilities,counts:Record
 export function mayAuthorCompany(resolution:CommercialResolution,companyId:string,selectedDemoCompanyId:string|null):boolean {
  return resolution.capabilities.canAuthor&&(resolution.plan!=='demo'||resolution.demoType==='pro'||selectedDemoCompanyId===companyId);
 }
+export type CompanyCoverageReason='NO_COVERAGE'|'COVERAGE_DELETING'|'COVERAGE_ENDED'|'COMPANY_NOT_COVERED'|'DEMO_COMPANY_PARKED'|'COVERAGE_ENDING'|null;
+export interface CompanyCommercialResolution extends CommercialResolution {coverageState:'active'|'ending'|'deleting'|'missing';coverageReason:CompanyCoverageReason;}
+/** One Company-scoped policy result for trusted operations and read-only status. Membership is checked separately. */
+export function resolveCompanyCommercial(subscription:Record<string,unknown>|undefined,cover:Record<string,unknown>|undefined,companyId:string,now=Date.now()):CompanyCommercialResolution {
+ const resolved=resolveCommercial(subscription,now);
+ const state=cover?.state===undefined?'active':cover.state;
+ const coverageState:CompanyCommercialResolution['coverageState']=!cover?'missing':state==='active'||state==='ending'||state==='deleting'?state:'missing';
+ let coverageReason:CompanyCoverageReason=null;
+ if(coverageState==='missing')coverageReason='NO_COVERAGE';
+ else if(coverageState==='deleting')coverageReason='COVERAGE_DELETING';
+ else if(coverageState==='ending'){
+  const deadline=millis(cover?.exportEndsAt);
+  coverageReason=Number.isFinite(deadline)&&now<deadline?'COVERAGE_ENDING':'COVERAGE_ENDED';
+ } else if(Array.isArray(subscription?.coveredCompanyIds)&&!subscription.coveredCompanyIds.includes(companyId))coverageReason='COMPANY_NOT_COVERED';
+ else if(resolved.plan==='demo'&&resolved.demoType==='company'&&subscription?.selectedDemoCompanyId!==companyId)coverageReason='DEMO_COMPANY_PARKED';
+ const capabilities={...resolved.capabilities};
+ if(coverageReason==='COVERAGE_ENDING'){
+  for(const key of ['canPublish','canInviteCompanyMembers','canCreateCompanies','canManageCompanySettings','canUseProTeam','canAuthor'] as const)capabilities[key]=false;
+  capabilities.canReadPublished=resolved.plan!=='demo';
+  capabilities.canExportBackup=resolved.plan!=='demo';
+ } else if(coverageReason){
+  for(const key of ['canPublish','canInviteCompanyMembers','canCreateCompanies','canExportBackup','canManageCompanySettings','canUseProTeam','canAuthor','canReadPublished'] as const)capabilities[key]=false;
+ }
+ return {...resolved,capabilities,coverageState,coverageReason};
+}
 export function addCalendarMonths(date:Date,months:number):Date {
  if(!Number.isInteger(months)||months<1)throw Error('Invalid renewal interval');
  const year=date.getUTCFullYear(),month=date.getUTCMonth(),day=date.getUTCDate(),result=new Date(date.getTime());
@@ -87,13 +112,26 @@ export function proratedCents(fullTermCents:number,termStart:number,termEnd:numb
 export type BillingEventType='subscription_started'|'subscription_renewed'|'subscription_upgrade'|'subscription_downgrade_scheduled'|'subscription_cancel_at_period_end'|'payment_failed'|'payment_recovered'|'seat_added'|'seat_removed'|'coverage_transferred';
 export interface BillingEvent {id:string;type:BillingEventType;subscriptionId:string;version:number;effectiveAt:string;payload:Record<string,unknown>;source:string;}
 export interface BillingAdjustment {eventId:string;kind:'upgrade'|'seat_add';creditCents:number;chargeCents:number;cadence:Cadence;}
-export interface CommercialState {subscriptionId:string;plan:string;demoType?:DemoType;tierId?:string;catalogVersion:string;cadence?:Cadence;priceVersion?:string;termStartedAt?:string;basePriceCents?:number;seatPriceCents?:number;billingAdjustments?:BillingAdjustment[];paidThrough?:string;graceEndsAt?:string;paymentFailureAt?:string;cancelAtPeriodEnd?:boolean;seatIds:string[];coveredCompanyIds:string[];selectedDemoCompanyId?:string|null;pendingDowngrade?:{tierId:string;retainedCompanyId:string;effectiveAt:string};lastVersion:number;appliedEventIds:string[];audit:{id:string;type:BillingEventType;at:string;source:string}[];}
+export interface CommercialState {subscriptionId:string;plan:string;demoType?:DemoType;tierId?:string;catalogVersion:string;cadence?:Cadence;priceVersion?:string;termStartedAt?:string;basePriceCents?:number;seatPriceCents?:number;billingAdjustments?:BillingAdjustment[];paidThrough?:string;graceEndsAt?:string;paymentFailureAt?:string;cancelAtPeriodEnd?:boolean;seatIds:string[];coveredCompanyIds:string[];selectedDemoCompanyId?:string|null;pendingDowngrade?:{tierId:string;retainedCompanyId:string;effectiveAt:string};lastVersion:number;appliedEventIds:string[];audit:{id:string;type:BillingEventType;at:string;source:string;version?:number;payloadSignature?:string}[];}
+const EVENT_PAYLOAD_KEYS:Record<BillingEventType,readonly string[]>={
+ subscription_started:['tierId','cadence','priceVersion','paidThrough','retainedCompanyId','administratorUid'],
+ subscription_upgrade:['tierId','cadence','priceVersion','paidThrough','retainedCompanyId','administratorUid'],
+ subscription_renewed:['priceVersion','administratorUid'],payment_recovered:['priceVersion','administratorUid'],
+ subscription_downgrade_scheduled:['tierId','retainedCompanyId'],subscription_cancel_at_period_end:[],
+ payment_failed:[],seat_added:['uid'],seat_removed:['uid'],coverage_transferred:['companyId']
+};
+function payloadSignature(event:BillingEvent):string {
+ const allowed=EVENT_PAYLOAD_KEYS[event.type];
+ if(!allowed||Object.entries(event.payload).some(([key,value])=>!allowed.includes(key)||typeof value!=='string'))throw Error('Invalid billing event payload');
+ return JSON.stringify(Object.fromEntries(Object.entries(event.payload).sort(([a],[b])=>a.localeCompare(b))));
+}
 /** Pure provider-neutral transition. The trusted adapter must authenticate the event source. */
 export function applyBillingEvent(state:CommercialState,event:BillingEvent,catalog:Readonly<Record<string,CatalogPlan>>=DEVELOPMENT_CATALOG):CommercialState {
  if(event.subscriptionId!==state.subscriptionId||!event.id||!event.source||!Number.isSafeInteger(event.version)||event.version<1||!event.payload||typeof event.payload!=='object')throw Error('Invalid billing event identity');
+ const signature=payloadSignature(event);
  if(state.appliedEventIds.includes(event.id)){
   const prior=state.audit.find(item=>item.id===event.id);
-  if(!prior||prior.type!==event.type||prior.at!==event.effectiveAt||prior.source!==event.source)throw Error('Billing event ID reused with different identity');
+  if(!prior||prior.type!==event.type||prior.at!==event.effectiveAt||prior.source!==event.source||prior.version!==undefined&&prior.version!==event.version||prior.payloadSignature!==undefined&&prior.payloadSignature!==signature)throw Error('Billing event ID reused with different identity');
   return state;
  }
  if(event.version!==state.lastVersion+1)throw Error('Out-of-order billing event');
@@ -102,7 +140,7 @@ export function applyBillingEvent(state:CommercialState,event:BillingEvent,catal
  if(event.type==='subscription_started'&&current.plan!=='demo')throw Error('Subscription already started');
  if(event.type==='subscription_upgrade'&&current.plan===null)throw Error('Unknown subscription to upgrade');
  if(['subscription_cancel_at_period_end','subscription_downgrade_scheduled','payment_failed','subscription_renewed','payment_recovered'].includes(event.type)&&(!current.plan||current.plan==='demo'))throw Error('Paid subscription required');
- const next:CommercialState={...state,seatIds:[...state.seatIds],coveredCompanyIds:[...state.coveredCompanyIds],billingAdjustments:[...(state.billingAdjustments??[])],appliedEventIds:[...state.appliedEventIds,event.id],audit:[...state.audit,{id:event.id,type:event.type,at:event.effectiveAt,source:event.source}],lastVersion:event.version};
+ const next:CommercialState={...state,seatIds:[...state.seatIds],coveredCompanyIds:[...state.coveredCompanyIds],billingAdjustments:[...(state.billingAdjustments??[])],appliedEventIds:[...state.appliedEventIds,event.id],audit:[...state.audit,{id:event.id,type:event.type,at:event.effectiveAt,source:event.source,version:event.version,payloadSignature:signature}],lastVersion:event.version};
  const target=String(event.payload.tierId??'');
  if(['subscription_started','subscription_upgrade'].includes(event.type)) {
   const plan=catalog[target];if(!plan||plan.family==='demo')throw Error('Unknown paid tier');
@@ -180,4 +218,17 @@ export function applyBillingEvent(state:CommercialState,event:BillingEvent,catal
 }
 export function cleanupEligible(coverage:{subscriptionId:string;graceEndsAt:string},currentCoverage:{subscriptionId:string}|null,now=Date.now()):boolean {
  return currentCoverage?.subscriptionId===coverage.subscriptionId&&now>=Date.parse(coverage.graceEndsAt);
+}
+export type CleanupReason='COVERAGE_TRANSFERRED'|'CLEANUP_IN_PROGRESS'|'UNKNOWN_COVERAGE_STATE'|'INVALID_DEADLINE'|'EXPORT_WINDOW_OPEN'|'COMMERCIAL_NOT_EXPIRED'|'ELIGIBLE';
+/** Pure dry-run decision; the backend must re-evaluate it inside its claiming transaction. */
+export function planCoverageCleanup(expectedOwner:string,cover:Record<string,unknown>|undefined,subscription:Record<string,unknown>|undefined,now=Date.now()):{eligible:boolean;reason:CleanupReason;deadline:number|null}{
+ if(!cover||cover.accountId!==expectedOwner)return {eligible:false,reason:'COVERAGE_TRANSFERRED',deadline:null};
+ if(cover.state==='deleting')return {eligible:false,reason:'CLEANUP_IN_PROGRESS',deadline:null};
+ if(cover.state!==undefined&&cover.state!=='active'&&cover.state!=='ending')return {eligible:false,reason:'UNKNOWN_COVERAGE_STATE',deadline:null};
+ const resolved=resolveCommercial(subscription,now);
+ const deadline=cover.state==='ending'?millis(cover.exportEndsAt):resolved.graceEndsAt;
+ if(deadline===null||!Number.isFinite(deadline))return {eligible:false,reason:'INVALID_DEADLINE',deadline:null};
+ if(now<deadline)return {eligible:false,reason:'EXPORT_WINDOW_OPEN',deadline};
+ if(cover.state!=='ending'&&resolved.status!=='expired')return {eligible:false,reason:'COMMERCIAL_NOT_EXPIRED',deadline};
+ return {eligible:true,reason:'ELIGIBLE',deadline};
 }

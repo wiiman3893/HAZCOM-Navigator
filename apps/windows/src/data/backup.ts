@@ -1,6 +1,7 @@
 import {invoke} from '@tauri-apps/api/core';
-import {exportCompanyBackup} from '@hazcom/sync/backup';
-import {auth,call,verifyCompany} from '../auth/firebase';
+import {exportCompanyBackup,prepareNativeCompanyRestore} from '@hazcom/sync/backup';
+import {doc,getDocFromServer} from 'firebase/firestore';
+import {auth,db as cloud,call,verifyCompany} from '../auth/firebase';
 import {openDatabase} from './database';
 
 interface CoverageStatus {capabilities:{canExportBackup:boolean};status:string;}
@@ -22,4 +23,21 @@ export async function exportWindowsCompanyBackup(uid:string,companyId:string){
  );
  await authorize();
  return packageData;
+}
+
+/** Native import into a separate fresh Company workspace; existing authoring data is never merged. */
+export async function restoreWindowsCompanyBackup(uid:string,companyId:string,packageData:unknown){
+ const authorize=async()=>{
+  const access=await verifyCompany(uid,companyId);
+  if(access.role==='member'||auth.currentUser?.uid!==uid)throw Error('Company restore requires Manager or Administrator access.');
+  const account=await getDocFromServer(doc(cloud,'accounts',uid));
+  if(account.get('activeCompanyId')!==companyId)throw Error('Active Company changed. Refresh access.');
+  const coverage=await call<{capabilities:{canAuthor:boolean}}> ('getCompanyCapabilities',{companyId});
+  if(!coverage.capabilities.canAuthor)throw Error('COMPANY_RESTORE_REQUIRES_ACTIVE_COVERAGE');
+ };
+ await authorize();
+ const plan=await prepareNativeCompanyRestore(packageData);
+ if(plan.companyId!==companyId)throw Error('Backup Company does not match the authorized Company.');
+ await authorize();
+ return invoke<{companyId:string;databasePath:string;attachmentCount:number;recordCount:number}>('restore_company_backup',plan);
 }

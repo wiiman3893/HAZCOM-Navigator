@@ -24,6 +24,7 @@ rand = "0.9"
 tauri-plugin-opener = "2"
 
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

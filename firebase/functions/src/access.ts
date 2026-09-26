@@ -3,13 +3,13 @@ import { getFirestore, Timestamp, type Transaction } from 'firebase-admin/firest
 import { getAuth } from 'firebase-admin/auth';
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { role, type Role } from './validation.js';
-import { resolveCommercial, type Capabilities } from '@hazcom/core';
+import { resolveCommercial, resolveCompanyCommercial, type Capabilities } from '@hazcom/core';
 
 initializeApp();
 export const db = getFirestore();
 export const auth = getAuth();
 export const GRACE_MS = 14 * 24 * 60 * 60 * 1000;
-export function denied(message: string): never { throw new HttpsError('permission-denied', message); }
+export function denied(message: string, reason?: string): never { throw new HttpsError('permission-denied', message, reason ? {reason} : undefined); }
 export async function identity(request: CallableRequest): Promise<string> {
   if (!request.auth || request.auth.token.firebase?.sign_in_provider === 'anonymous') throw new HttpsError('unauthenticated', 'Real sign-in required.');
   // Callable token validation alone does not check disabled/revoked accounts.
@@ -30,13 +30,12 @@ export async function membership(tx: Transaction, uid: string, companyId: string
 }
 export async function coverage(tx: Transaction, companyId: string, capability: keyof Capabilities = 'canAuthor') {
   const cover = await tx.get(db.doc(`companies/${companyId}/coverage/current`));
-  if (!cover.exists) denied('Company has no subscription coverage.');
-  if(cover.get('state')==='ending'&&capability!=='canReadPublished'&&capability!=='canExportBackup')denied('Company coverage is ending; authoring is disabled.');
+  if (!cover.exists) denied('Company has no subscription coverage.','NO_COVERAGE');
   const subscription = await tx.get(db.doc(`subscriptions/${cover.get('accountId')}`));
-  const resolved = resolveCommercial(subscription.data());
-  if (resolved.capabilities[capability] !== true) denied(`Company coverage lacks ${capability}.`);
-  if (resolved.plan === 'demo' && resolved.demoType === 'company' && subscription.get('selectedDemoCompanyId') !== companyId) denied('This Company is parked in Company Demo.');
-  const covered=subscription.get('coveredCompanyIds');
-  if(cover.get('state')!=='ending'&&Array.isArray(covered)&&!covered.includes(companyId))denied('Company is not covered by this subscription.');
+  const resolved = resolveCompanyCommercial(subscription.data(),cover.data(),companyId);
+  if (resolved.capabilities[capability] !== true) {
+    const reason=resolved.coverageReason??(resolved.status==='grace'?'COMMERCIAL_GRACE':resolved.status==='expired'?'COMMERCIAL_EXPIRED':resolved.plan==='demo'?'DEMO_CAPABILITY_UNAVAILABLE':'CAPABILITY_UNAVAILABLE');
+    denied(`Company coverage lacks ${capability}.`,reason);
+  }
   return subscription;
 }

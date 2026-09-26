@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fixture} from './fixtures.mjs';
 import {nodeSqlite,nodeFiles} from '../src/node.js';
-import {exportCompanyBackup,importCompanyBackup,validateCompanyBackup} from '../src/backup.js';
+import {exportCompanyBackup,importCompanyBackup,prepareNativeCompanyRestore,validateCompanyBackup} from '../src/backup.js';
 import {REPLICA_SCHEMA_SQL} from '../src/sqlite.js';
 import {InMemoryBackupDelivery} from '@hazcom/core';
 const migration=await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8');
@@ -21,6 +21,12 @@ test('versioned Company backup restores structured history and SDS into an indep
   const backup=await exportCompanyBackup(source.sql,source.files,source.company.id);
   assert.equal(backup.manifest.format,'hazcom-company-backup');
   assert.equal(backup.manifest.version,2);
+  assert.equal(backup.manifest.schemaVersion,3);
+  const native=await prepareNativeCompanyRestore(backup);
+  assert.equal(native.companyId,source.company.id);
+  assert.equal(native.files.length,20);
+  assert.equal(native.statements.filter(row=>row.statement.startsWith('INSERT INTO dm_attachments ')).length,20);
+  assert.equal(native.statements.find(row=>row.statement.startsWith('INSERT INTO dm_attachments ')).values.includes(`${source.company.id}/${native.files[0].attachmentId}.pdf`),true);
   const legacy=structuredClone(backup);legacy.manifest.version=1;delete legacy.manifest.attachmentHash;
   assert.equal((await validateCompanyBackup(legacy)).companyId,source.company.id);
   assert.equal(backup.attachments.length,20);
@@ -49,6 +55,7 @@ test('backup rejects corrupted records, SDS bytes, ownership and unsupported sch
   const altered=mutate=>{const copy=structuredClone(original);mutate(copy);return copy;};
   for(const bad of [
    altered(b=>b.manifest.version=3),
+   altered(b=>b.manifest.schemaVersion=99),
    altered(b=>b.tables.worker[0].name='tampered'),
    altered(b=>b.attachments[0].base64=Buffer.from('%PDF-bad').toString('base64')),
    altered(b=>b.attachments[0].ownerId='foreign'),

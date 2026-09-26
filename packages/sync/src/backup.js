@@ -42,6 +42,7 @@ function validateRelationships(tables,companyId){
 export async function validateCompanyBackup(packageData){
  const {manifest,tables,attachments}=packageData??{};
  need(manifest?.format==='hazcom-company-backup'&&[1,2].includes(manifest.version)&&validId(manifest.companyId),'Unsupported backup manifest');
+ if(manifest.version===2)need(manifest.schemaVersion===3,'Unsupported backup SQLite schema');
  need(tables&&typeof tables==='object'&&Array.isArray(attachments),'Malformed backup');
  need(Object.keys(tables).sort().join('|')===expectedTables.slice().sort().join('|')&&expectedTables.every(t=>Array.isArray(tables[t])),'Unsupported backup tables');
  need(await digest(new TextEncoder().encode(JSON.stringify(tables)))===manifest.recordHash,'Backup records hash changed');
@@ -89,7 +90,7 @@ export async function exportCompanyBackup(sql,files,companyId){
  const recordHash=await digest(new TextEncoder().encode(JSON.stringify(tables)));
  validateRelationships(tables,companyId);
  const attachmentHash=await digest(new TextEncoder().encode(JSON.stringify(attachmentDescriptors(attachments))));
- return {manifest:{format:'hazcom-company-backup',version:2,companyId,recordHash,attachmentHash,attachmentCount:attachments.length,createdAt:new Date().toISOString()},tables,attachments};
+ return {manifest:{format:'hazcom-company-backup',version:2,schemaVersion:3,companyId,recordHash,attachmentHash,attachmentCount:attachments.length,createdAt:new Date().toISOString()},tables,attachments};
 }
 
 /** Import into a separate fresh database; caller switches to it only after this succeeds. */
@@ -105,6 +106,12 @@ export async function importCompanyBackup(packageData,sql,files){
   const localPath=await files.stage(manifest.companyId,file.attachmentId,bytes);
   prepared.push({...row,relative_path:localPath});
  }
+ const statements=restoreStatements(tables,prepared);
+ await sql.batch(statements);
+ return {companyId:manifest.companyId,recordCount:statements.length,attachmentCount:prepared.length};
+}
+
+function restoreStatements(tables,prepared){
  const statements=[];
  const append=(table,rows)=>{for(const row of rows){const keys=Object.keys(row);need(keys.length>0&&keys.every(k=>/^[a-z_]+$/i.test(k)),'Invalid backup column');statements.push({statement:`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(()=>'?').join(',')})`,values:keys.map(k=>row[k])});}};
  append('company',tables.company);
@@ -112,6 +119,13 @@ export async function importCompanyBackup(packageData,sql,files){
  for(const [table] of links)append(table,tables[table]);
  append('dm_attachments',prepared);append('authoring_sds_integrity',tables.authoring_sds_integrity);
  append('dm_change_history',tables.dm_change_history);append('authoring_versions',tables.authoring_versions);
- await sql.batch(statements);
- return {companyId:manifest.companyId,recordCount:statements.length,attachmentCount:prepared.length};
+ return statements;
+}
+
+/** Native IPC plan; the native side stages a fresh database and all SDS files together. */
+export async function prepareNativeCompanyRestore(packageData){
+ await validateCompanyBackup(packageData);
+ const {manifest,tables,attachments}=packageData;
+ const prepared=tables.dm_attachments.map(row=>({...row,relative_path:`${manifest.companyId}/${row.id}.pdf`}));
+ return {companyId:manifest.companyId,statements:restoreStatements(tables,prepared),files:attachments.map(file=>({attachmentId:file.attachmentId,sha256:file.sha256,sizeBytes:file.sizeBytes,bytes:Array.from(decodeBase64(file.base64))}))};
 }

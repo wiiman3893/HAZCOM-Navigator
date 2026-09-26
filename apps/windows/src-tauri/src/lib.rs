@@ -1,6 +1,7 @@
 mod authoring;
 mod publication_files;
 mod browser_auth;
+mod backup_restore;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 fn migrations() -> Vec<Migration> {
@@ -31,7 +32,8 @@ pub fn run() {
             publication_files::read_publication_sds,
             publication_files::store_authoring_sds,
             publication_files::store_sds_import_source,
-            authoring::authoring_batch
+            authoring::authoring_batch,
+            backup_restore::restore_company_backup
         ])
         .plugin(
             tauri_plugin_sql::Builder::default()

@@ -1,5 +1,9 @@
 # Implementation status
 
+## Commercial lifecycle and backup convergence — isolated task branch
+
+The isolated `work/commercial-lifecycle-convergence-2026-09-26` branch starts from main `30fa9fd2ca6d46d1892259340c165b3e7ff57157`; it has **not** been merged or deployed. It hardens provider-neutral billing event identity/transitions, shares Company coverage decisions between backend enforcement and status, adds a read-only emulator cleanup plan, and upgrades backup integrity to v2 while reading legacy v1. A native Windows service validates and restores a package into a separate fresh SQLite/SDS workspace and activates that workspace directory atomically after verification. The current authoring UI still opens the primary database; selecting or merging a restored workspace is not implemented. See [commercial work resume](WORK_RESUME_COMMERCIAL_LIFECYCLE.md).
+
 ## Firebase schema-2 development deployment — native publication and replica proven; security checks pending
 
 The coordinated schema-2 Functions, Firestore rules/indexes and Storage rules are deployed to `hazcom-navigator-dev`. All 23 client-facing Cloud Run services were audited with Firebase invocation reaching application authorization. On September 26 the authenticated native Windows app published synthetic schema-2 revisions 2 and 3, with 17 records and 3 SDS each. A separate clean SQLite receiver imported revision 2, preserved it after an injected corrupted-SDS failure, then atomically activated revision 3. The receiver's cloud transport used privileged read-only CLI credentials, so client Rules authorization was checked separately: signed-in Firebase SDK SDS read succeeded and anonymous SDS URLs returned 403. Live authenticated nonmember/Member/Demo and privileged-write denial remain to be proven before a frozen acceptance checkpoint. See [the deployment handoff](FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md) for exact evidence. Earlier sections below describe historical checkpoints.

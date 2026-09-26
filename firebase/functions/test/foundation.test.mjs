@@ -177,6 +177,7 @@ test('trusted Pro billing events materialize inherited Manager access and seat r
  const started={id:'billing-start',type:'subscription_started',subscriptionId:'pro-owner-v1',version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:'pro',cadence:'monthly',priceVersion:'v1'}};
  assert.equal((await applyTrustedBillingEvent('pro-owner-v1',started)).applied,true);
  assert.equal((await applyTrustedBillingEvent('pro-owner-v1',started)).applied,false);
+ await assert.rejects(applyTrustedBillingEvent('pro-owner-v1',{...started,payload:{...started.payload,tierId:'company'}}));
  assert.equal((await call('createCompany','pro-owner-v1',{companyId:'pro-client-one',company})).role,'manager');
  const {beginBackupEmailVerification,confirmBackupEmailVerification}=await import('../lib/commercial-backup.js');
  const outbox=[];await beginBackupEmailVerification('pro-owner-v1','pro-client-one','backup-new@example.com',{send:async message=>{outbox.push(message);}});
@@ -185,9 +186,11 @@ test('trusted Pro billing events materialize inherited Manager access and seat r
  assert.equal((await confirmBackupEmailVerification('pro-client-one',outbox[0].token)).email,'backup-new@example.com');
  assert.equal((await db.doc('companies/pro-client-one').get()).get('backupEmailVerified'),true);
  assert.equal((await db.doc('accounts/backup-new@example.com').get()).exists,false);
+ await call('setMembership','pro-owner-v1',{companyId:'pro-client-one',uid:'pro-seat-v1',role:'member',active:true});
  const seat={...started,id:'billing-seat',version:2,type:'seat_added',payload:{uid:'pro-seat-v1'}};
  await applyTrustedBillingEvent('pro-owner-v1',seat);
  assert.equal((await db.doc('companies/pro-client-one/memberships/pro-seat-v1').get()).get('role'),'manager');
+ assert.equal((await db.doc('companies/pro-client-one/memberships/pro-seat-v1').get()).get('directMembership').role,'member');
  assert.equal((await call('createCompany','pro-owner-v1',{companyId:'pro-client-two',company})).role,'manager');
  assert.equal((await db.doc('companies/pro-client-two/memberships/pro-seat-v1').get()).get('proTeamSubscriptionId'),'pro-owner-v1');
  await call('beginPublication','pro-owner-v1',{companyId:'pro-client-two',revisionId:'pro-seat-access',parentRevisionId:null});
@@ -195,9 +198,12 @@ test('trusted Pro billing events materialize inherited Manager access and seat r
  await call('finalizePublication','pro-owner-v1',{companyId:'pro-client-two',revisionId:'pro-seat-access',dataset:payload,attachmentIds:['seat-sds']});
  await assertSucceeds(getDoc(doc(context('pro-seat-v1').firestore(),'companies/pro-client-two/publishedRevisions/pro-seat-access/chemicalProducts/product')));
  await assertSucceeds(getBytes(ref(context('pro-seat-v1').storage(),seatSds.relativePath)));
+ await assertFails(getDoc(doc(context('pro-seat-v1').firestore(),`companies/${globalThis.customerCompany}`)));
  await assert.rejects(call('setMembership','pro-seat-v1',{companyId:'pro-client-two',uid:'pro-seat-v1',role:'administrator',active:true}));
  await applyTrustedBillingEvent('pro-owner-v1',{...seat,id:'billing-remove',version:3,type:'seat_removed'});
- assert.equal((await db.doc('companies/pro-client-one/memberships/pro-seat-v1').get()).exists,false);
+ assert.equal((await db.doc('companies/pro-client-one/memberships/pro-seat-v1').get()).get('role'),'member');
+ assert.equal((await db.doc('companies/pro-client-one/memberships/pro-seat-v1').get()).get('proTeamSubscriptionId'),undefined);
+ assert.equal((await db.doc('companies/pro-client-two/memberships/pro-seat-v1').get()).exists,false);
  await assertFails(getDoc(doc(context('pro-seat-v1').firestore(),'companies/pro-client-two/publishedRevisions/pro-seat-access/chemicalProducts/product')));
  await assertFails(getBytes(ref(context('pro-seat-v1').storage(),seatSds.relativePath)));
  assert.equal((await db.doc('companies/pro-client-two').get()).exists,true);
@@ -302,7 +308,7 @@ test('paid Company coverage attaches to an existing Manager without mutating Com
 });
 
 test('Pro owner release preserves read access during export window and cleanup deletes only after it',async()=>{
- const {applyTrustedBillingEvent,releaseProCompany,cleanupExpiredCompanyInEmulator}=await import('../lib/commercial-admin.js');
+ const {applyTrustedBillingEvent,releaseProCompany,planExpiredCompanyCleanupInEmulator,cleanupExpiredCompanyInEmulator}=await import('../lib/commercial-admin.js');
  const uid='release-owner-v1';await auth.createUser({uid,email:`${uid}@example.com`});
  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
  await call('bootstrapAccount',uid,{});
@@ -311,11 +317,24 @@ test('Pro owner release preserves read access during export window and cleanup d
  const release=await releaseProCompany(uid,companyId,'release-event');
  assert.equal(release.released,true);
  assert.equal((await releaseProCompany(uid,companyId,'release-event')).released,false);
- assert.equal((await call('getCompanyCoverageStatus',uid,{companyId})).status,'ending');
+ const status=await call('getCompanyCoverageStatus',uid,{companyId});
+ assert.equal(status.status,'ending');
+ assert.equal(status.coverageReason,'COVERAGE_ENDING');
+ assert.equal(status.capabilities.canAuthor,false);
+ assert.equal(status.backupEligible,true);
  assert.equal((await getDoc(doc(context(uid).firestore(),`companies/${companyId}`))).exists(),true);
  await assert.rejects(call('getCompanyCapabilities',uid,{companyId}));
+ assert.equal((await planExpiredCompanyCleanupInEmulator(companyId,uid,'release-plan-check')).reason,'EXPORT_WINDOW_OPEN');
  assert.equal((await cleanupExpiredCompanyInEmulator(companyId,uid,'release-too-early',Date.parse(release.exportEndsAt)-1)).deleted,false);
- assert.equal((await cleanupExpiredCompanyInEmulator(companyId,uid,'release-final',Date.parse(release.exportEndsAt)+1)).deleted,true);
+ await db.doc(`companies/${companyId}/coverage/current`).update({exportEndsAt:new Date(Date.now()-1000).toISOString()});
+ const ended=await call('getCompanyCoverageStatus',uid,{companyId});
+ assert.equal(ended.status,'expired');
+ assert.equal(ended.coverageReason,'COVERAGE_ENDED');
+ assert.equal(ended.backupEligible,false);
+ const planned=await planExpiredCompanyCleanupInEmulator(companyId,uid,'release-final');
+ assert.equal(planned.eligible,true);
+ assert.equal(planned.firestoreSubtree,`companies/${companyId}`);
+ assert.equal((await cleanupExpiredCompanyInEmulator(companyId,uid,'release-final',Date.now())).deleted,true);
 });
 
 test('failed-payment recovery before cleanup restores authoring and retains the Company',async()=>{

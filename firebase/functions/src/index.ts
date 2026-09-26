@@ -3,7 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { auth, db, identity, membership, coverage, canAuthor, denied } from './access.js';
 import { companyFields, id, object, keys, role, date, fail } from './validation.js';
-import { resolveCommercial, mayCreateWithinLimit } from '@hazcom/core';
+import { resolveCommercial, resolveCompanyCommercial, mayCreateWithinLimit } from '@hazcom/core';
 
 setGlobalOptions({ region: 'us-central1', maxInstances: 3, memory: '512MiB', timeoutSeconds: 120 });
 export { beginPublication, uploadPublicationSds, finalizePublication } from './publication.js';
@@ -84,7 +84,7 @@ export const getCommercialStatus=onCall(async request=>{
   const uid=await identity(request);
   const snapshot=await db.doc(`subscriptions/${uid}`).get(),value=snapshot.data();
   const resolved=resolveCommercial(value);
-  return {plan:resolved.plan,demoType:resolved.demoType,tierId:resolved.tierId,status:resolved.status,cadence:resolved.cadence,priceVersion:resolved.priceVersion,catalogVersion:resolved.catalogVersion,paidThrough:resolved.paidThrough,renewalAt:value?.cancelAtPeriodEnd?null:resolved.paidThrough,cancelAtPeriodEnd:value?.cancelAtPeriodEnd===true,graceEndsAt:resolved.graceEndsAt,seatCount:resolved.plan==='pro'||resolved.demoType==='pro'?(Array.isArray(value?.seatIds)?value.seatIds.length:0):0,coveredCompanyIds:Array.isArray(value?.coveredCompanyIds)?value.coveredCompanyIds:[],selectedDemoCompanyId:value?.selectedDemoCompanyId??null,pendingDowngrade:value?.pendingDowngrade??null,capabilities:resolved.capabilities};
+  return {plan:resolved.plan,demoType:resolved.demoType,tierId:resolved.tierId,status:resolved.status,cadence:resolved.cadence,priceVersion:resolved.priceVersion,catalogVersion:resolved.catalogVersion,paidThrough:resolved.paidThrough,renewalAt:value?.cancelAtPeriodEnd?null:resolved.paidThrough,cancelAtPeriodEnd:value?.cancelAtPeriodEnd===true,paymentFailureAt:value?.paymentFailureAt??null,graceEndsAt:resolved.graceEndsAt,seatCount:resolved.plan==='pro'||resolved.demoType==='pro'?(Array.isArray(value?.seatIds)?value.seatIds.length:0):0,coveredCompanyIds:Array.isArray(value?.coveredCompanyIds)?value.coveredCompanyIds:[],selectedDemoCompanyId:value?.selectedDemoCompanyId??null,pendingDowngrade:value?.pendingDowngrade??null,capabilities:resolved.capabilities};
 });
 
 export const getCompanyCoverageStatus=onCall(async request=>{
@@ -93,11 +93,12 @@ export const getCompanyCoverageStatus=onCall(async request=>{
     const {company,member}=await membership(tx,uid,companyId);
     const cover=await tx.get(db.doc(`companies/${companyId}/coverage/current`));
     const subscription=cover.exists?await tx.get(db.doc(`subscriptions/${cover.get('accountId')}`)):null;
-    const resolved=resolveCommercial(subscription?.data());
+    const resolved=resolveCompanyCommercial(subscription?.data(),cover.data(),companyId);
     const revisionId=company.get('currentRevisionId');
     const revision=revisionId&&member.get('role')!=='member'?await tx.get(db.doc(`companies/${companyId}/publishedRevisions/${revisionId}`)):null;
     const counts=revision?.get('recordCounts')??null;
-    return {companyId,coverageSource:resolved.plan==='pro'?'pro':resolved.plan==='company'?'company':resolved.plan==='demo'?'demo':'none',status:cover.get('state')==='ending'?'ending':resolved.status,hostedAccessEndingAt:cover.get('state')==='ending'?cover.get('exportEndsAt'):resolved.status==='grace'?resolved.graceEndsAt:null,capabilities:resolved.capabilities,publishedRecordCounts:counts,overLimit:counts?{chemicalProducts:resolved.capabilities.maxChemicalProductsPerCompany!==null&&counts.chemicalProducts>resolved.capabilities.maxChemicalProductsPerCompany,workers:resolved.capabilities.maxWorkersPerCompany!==null&&counts.workers>resolved.capabilities.maxWorkersPerCompany,workAreas:resolved.capabilities.maxWorkAreasPerCompany!==null&&counts.workAreas>resolved.capabilities.maxWorkAreasPerCompany}:null};
+    const source=member.get('proTeamSubscriptionId')?(member.get('directMembership')?'direct_and_pro_team':'pro_team_inherited'):'direct_membership';
+    return {companyId,coverageSource:resolved.plan==='pro'?'pro':resolved.plan==='company'?'company':resolved.plan==='demo'?'demo':'none',coverageState:resolved.coverageState,coverageReason:resolved.coverageReason,effectiveRole:member.get('role'),authorizationSource:source,status:resolved.coverageState==='ending'&&resolved.coverageReason==='COVERAGE_ENDING'?'ending':resolved.coverageReason==='COVERAGE_ENDED'?'expired':resolved.status,hostedAccessEndingAt:resolved.coverageState==='ending'?cover.get('exportEndsAt'):resolved.status==='grace'?resolved.graceEndsAt:null,paymentFailureAt:subscription?.get('paymentFailureAt')??null,pendingDowngrade:subscription?.get('pendingDowngrade')??null,capabilities:resolved.capabilities,backupEligible:member.get('role')!=='member'&&resolved.capabilities.canExportBackup,publishedRecordCounts:counts,overLimit:counts?{chemicalProducts:resolved.capabilities.maxChemicalProductsPerCompany!==null&&counts.chemicalProducts>resolved.capabilities.maxChemicalProductsPerCompany,workers:resolved.capabilities.maxWorkersPerCompany!==null&&counts.workers>resolved.capabilities.maxWorkersPerCompany,workAreas:resolved.capabilities.maxWorkAreasPerCompany!==null&&counts.workAreas>resolved.capabilities.maxWorkAreasPerCompany}:null};
   });
 });
 
@@ -168,7 +169,7 @@ export const coverCompany = onCall(async request => {
     const resolved=resolveCommercial(subscription.data());
     if (!resolved.capabilities.canUseProTeam || resolved.plan!=='pro') denied('An active Pro plan is required.');
     if (existing.exists) {
-      if (existing.get('accountId') === uid) return;
+      if (existing.get('accountId') === uid && existing.get('state') !== 'ending' && existing.get('state') !== 'deleting') return;
       throw new HttpsError('failed-precondition','Coverage transfer requires a future audited administrative workflow.');
     }
     if(!mayCreateWithinLimit(resolved.capabilities.maxCoveredCompanies,subscription.get('coveredCompanyCount')??0))denied('Pro Company coverage limit reached.');
