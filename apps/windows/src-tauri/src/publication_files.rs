@@ -23,10 +23,18 @@ pub fn read_publication_sds(app: tauri::AppHandle, relative_path: String) -> Res
 pub fn store_authoring_sds(app: tauri::AppHandle, company_id: String, id: String, bytes: Vec<u8>) -> Result<String,String> {
     store_pdf(&app.path().app_data_dir().map_err(|e|e.to_string())?.join("attachments"), &company_id, &id, &bytes)
 }
+
+#[tauri::command]
+pub fn store_sds_import_source(app: tauri::AppHandle, company_id: String, id: String, bytes: Vec<u8>) -> Result<String,String> {
+    store_pdf_with_limit(&app.path().app_data_dir().map_err(|e|e.to_string())?.join("attachments"), &company_id, &id, &bytes, 250 * 1024 * 1024)
+}
 fn store_pdf(root: &Path, company: &str, id: &str, bytes: &[u8]) -> Result<String,String> {
+    store_pdf_with_limit(root, company, id, bytes, 5 * 1024 * 1024)
+}
+fn store_pdf_with_limit(root: &Path, company: &str, id: &str, bytes: &[u8], max_bytes: usize) -> Result<String,String> {
     use std::io::Write;
     for part in [company,id] { if part.is_empty() || part.len()>128 || !part.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_') {return Err("Invalid managed SDS identity".into());} }
-    if bytes.len()>5*1024*1024 || !bytes.starts_with(b"%PDF-") {return Err("Invalid SDS PDF or size".into());}
+    if bytes.len()>max_bytes || !bytes.starts_with(b"%PDF-") {return Err("Invalid SDS PDF or size".into());}
     fs::create_dir_all(root).map_err(|e|e.to_string())?;
     let root=root.canonicalize().map_err(|e|e.to_string())?;
     let folder=root.join(company);fs::create_dir_all(&folder).map_err(|e|e.to_string())?;
