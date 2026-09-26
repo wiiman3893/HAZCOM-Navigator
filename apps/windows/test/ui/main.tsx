@@ -7,7 +7,7 @@ import {createPublicationWorkflow} from '../../src/data/publication-workflow';
 const attempts=new Map(),publishedLocal=new Map();
 function Harness(){const [companyId,setCompany]=useState('ui-company'),[role,setRole]=useState('manager'),[entitlement,setEntitlement]=useState('paid');const open=useCallback(async()=>{
  const invoke=async(method:string,args:any[])=>{const response=await fetch('/authoring-api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({companyId,role,method,args})});const body=await response.json();if(!response.ok)throw Error(body.error);return method==='readSds'?new Uint8Array(body):body;};
- return Object.fromEntries(['snapshot','create','update','trash','importSds','unlinkSds','readSds'].map(method=>[method,(...args:any[])=>invoke(method,args.map(a=>a instanceof Uint8Array?Array.from(a):a))]));
+ return Object.fromEntries(['snapshot','create','update','trash','importSds','unlinkSds','readSds','importSdsBatch','splitImportDraft','mergeImportDraft','readImportSource','saveImportReview','readImportDraft'].map(method=>[method,(...args:any[])=>invoke(method,args.map(a=>a instanceof Uint8Array?Array.from(a):a))]));
  },[companyId,role]);
  const publication=useMemo(()=>{
   const key=companyId+'/'+role;
