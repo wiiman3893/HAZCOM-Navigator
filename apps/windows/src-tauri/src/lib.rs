@@ -19,6 +19,7 @@ pub fn run() {
             kind: MigrationKind::Up,
         },
         Migration { version: 3, description: "local_authoring", sql: include_str!("../../../../database/migrations/003_authoring.sql"), kind: MigrationKind::Up },
+        Migration { version: 4, description: "bulk_sds_import", sql: include_str!("../../../../database/migrations/004_bulk_sds_import.sql"), kind: MigrationKind::Up },
     ];
 
     tauri::Builder::default()
