@@ -28,3 +28,5 @@ jobs:
         run: npm run build
       - name: Rust unit tests
         run: cargo test --manifest-path apps/windows/src-tauri/Cargo.toml --lib
+
+# Validation sync 1
