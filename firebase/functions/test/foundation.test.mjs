@@ -178,6 +178,7 @@ test('trusted Pro billing events materialize inherited Manager access and seat r
  assert.equal((await applyTrustedBillingEvent('pro-owner-v1',started)).applied,true);
  assert.equal((await applyTrustedBillingEvent('pro-owner-v1',started)).applied,false);
  await assert.rejects(applyTrustedBillingEvent('pro-owner-v1',{...started,payload:{...started.payload,tierId:'company'}}));
+ await assert.rejects(applyTrustedBillingEvent('pro-owner-v1',{...started,id:'unsafe-transfer',version:2,type:'coverage_transferred',payload:{companyId:'pro-client-one'}}));
  assert.equal((await call('createCompany','pro-owner-v1',{companyId:'pro-client-one',company})).role,'manager');
  const {beginBackupEmailVerification,confirmBackupEmailVerification}=await import('../lib/commercial-backup.js');
  const outbox=[];await beginBackupEmailVerification('pro-owner-v1','pro-client-one','backup-new@example.com',{send:async message=>{outbox.push(message);}});
@@ -351,4 +352,30 @@ test('failed-payment recovery before cleanup restores authoring and retains the 
  assert.equal((await call('getCompanyCapabilities',uid,{companyId})).capabilities.canAuthor,true);
  assert.equal((await cleanupExpiredCompanyInEmulator(companyId,uid,'cleanup-after-recovery',Date.now())).deleted,false);
  assert.equal((await db.doc(`companies/${companyId}`).get()).exists,true);
+});
+
+test('paid grace preserves published hazard read and backup eligibility while blocking new operations',async()=>{
+ const {applyTrustedBillingEvent}=await import('../lib/commercial-admin.js');
+ const uid='grace-owner-v1',companyId='grace-company-v1';
+ await auth.createUser({uid,email:`${uid}@example.com`});
+ await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+ await call('bootstrapAccount',uid,{});
+ await applyTrustedBillingEvent(uid,{id:'grace-paid',type:'subscription_started',subscriptionId:uid,version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:'company',cadence:'monthly'}});
+ await call('createCompany',uid,{companyId,company});
+ await call('beginPublication',uid,{companyId,revisionId:'grace-revision',parentRevisionId:null});
+ await call('finalizePublication',uid,{companyId,revisionId:'grace-revision',dataset:payload,attachmentIds:[]});
+ await db.doc(`subscriptions/${uid}`).update({paidThrough:new Date(Date.now()-86400000).toISOString(),graceEndsAt:new Date(Date.now()+13*86400000).toISOString()});
+ const status=await call('getCompanyCoverageStatus',uid,{companyId});
+ assert.equal(status.status,'grace');
+ assert.equal(status.backupEligible,true);
+ assert.equal(status.capabilities.canReadPublished,true);
+ assert.equal(status.capabilities.canAuthor,false);
+ assert.equal(status.capabilities.canPublish,false);
+ assert.equal(status.capabilities.canInviteCompanyMembers,false);
+ await assertSucceeds(getDoc(doc(context(uid).firestore(),`companies/${companyId}/publishedRevisions/grace-revision/chemicalProducts/product`)));
+ await assert.rejects(call('getCompanyCapabilities',uid,{companyId}),error=>error.details?.reason==='COMMERCIAL_GRACE');
+ await assert.rejects(call('updateCompany',uid,{companyId,company}));
+ await assert.rejects(call('setMembership',uid,{companyId,uid:'member',role:'member',active:true}));
+ await assert.rejects(call('beginPublication',uid,{companyId,revisionId:'grace-new-revision',parentRevisionId:'grace-revision'}));
+ await assert.rejects(call('createCompany',uid,{companyId:'grace-second-company',company}));
 });

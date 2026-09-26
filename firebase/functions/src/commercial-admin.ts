@@ -6,6 +6,7 @@ import {db,denied} from './access.js';
 /** Trusted adapter only: deliberately not exported as a callable Function. */
 export async function applyTrustedBillingEvent(accountId:string,event:BillingEvent,now=Date.now()){
  if(event.subscriptionId!==accountId)throw Error('Billing account mismatch');
+ if(event.type==='coverage_transferred')throw Error('Coverage transfer requires the audited Company transfer transaction');
  if(Date.parse(event.effectiveAt)>now+60_000)throw Error('Future billing event cannot apply early');
  return db.runTransaction(async tx=>{
   const ref=db.doc(`subscriptions/${accountId}`),snapshot=await tx.get(ref);

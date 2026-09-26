@@ -44,4 +44,6 @@ The native restore is service-only. A restored workspace is not yet selected by 
 
 A subsequent cross-language fixture proves that a deterministic small Company package produced by the JavaScript backup exporter can be imported by the actual native Rust migration/SQLite/SDS path. The native layer independently verifies the v2 SDS descriptor hash and persists `restore-manifest.json` alongside the activated separate workspace.
 
+The next emulator checkpoint adds a paid-grace denial matrix: published hazard read and backup eligibility remain, while authoring, settings, invitations, publication and new Company creation are blocked. An immediate Pro-to-Company billing "upgrade" is rejected in favor of the scheduled downgrade path, and coverage transfer is restricted to the audited Company transaction rather than a standalone billing event.
+
 The frozen branch `frozen/commercial-entitlement-v1-2026-09-25` records this validated local/emulator foundation. It is not a claim that billing, production email, cloud backup delivery, or cloud cleanup have been deployed. Never repoint this or any earlier frozen branch.

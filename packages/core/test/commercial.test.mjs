@@ -144,6 +144,8 @@ test('billing lifecycle rejects unsafe transitions and recovers deterministicall
  const cancelled=applyBillingEvent(recovered,event('cancel','subscription_cancel_at_period_end',3,'2026-11-20T00:00:00Z'));
  assert.throws(()=>applyBillingEvent(cancelled,event('bad-renew','subscription_renewed',4,cancelled.paidThrough)),/Cancelled subscription/);
  assert.throws(()=>applyBillingEvent(base,event('early-downgrade','subscription_downgrade_scheduled',1,base.paidThrough,{tierId:'company',retainedCompanyId:'client'})),/Active Pro term/);
+ assert.throws(()=>applyBillingEvent(base,event('immediate-downgrade','subscription_upgrade',1,'2026-10-20T00:00:00Z',{tierId:'company',cadence:'monthly',retainedCompanyId:'client'})),/scheduled downgrade/);
+ assert.throws(()=>applyBillingEvent(base,event('same-plan','subscription_upgrade',1,'2026-10-20T00:00:00Z',{tierId:'pro',cadence:'monthly'})),/requires renewal/);
  assert.throws(()=>applyBillingEvent(base,event('second-start','subscription_started',1,'2026-10-20T00:00:00Z',{tierId:'company',cadence:'monthly'})),/already started/);
 });
 

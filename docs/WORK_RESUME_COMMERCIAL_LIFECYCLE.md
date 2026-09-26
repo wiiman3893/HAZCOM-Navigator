@@ -45,11 +45,21 @@ Checkpoint 2 commit: `aac91c24f58b92c91d6d862c1978976882105e9e`. The task branch
 - A deterministic synthetic small-Company JavaScript exporter fixture (`5` Work Areas, `20` Chemical Products, `10` Workers, `20` SDS files) is consumed by a Rust native restore test. The test restored the generated plan through SQLite migration/import and SDS activation, then verified entity counts. Regenerating the fixture twice produced the same SHA-256 (`F0CDC52AAB1A2A3AADEAF659F51510D8DEBB3C2E933F3BF9541411109F0C69FC`).
 - Focused `cargo test backup_restore --lib` passed (2 tests). Final `npm run test:sync` (9 tests), `npm run build`, and `cargo test --lib` (7 native tests) passed for this checkpoint.
 
+Checkpoint 3 commit: `75389b31f567f48f9ce6d88787281cf919bc10ba`. The task branch was pushed to origin at that commit; main remained unchanged.
+
+## Checkpoint 4 — grace and lifecycle denial matrix
+
+- A Firebase emulator test moves a paid Company with an immutable published revision into grace. It proves published hazard read and backup eligibility remain, while Company creation, local authoring capability, settings edits, invitations and publication are denied. The authoring denial reports `COMMERCIAL_GRACE`.
+- Provider-neutral lifecycle rejects an immediate Pro-to-Company change (the contract requires a scheduled downgrade) and rejects a same-tier/same-cadence "upgrade" that should be a renewal. The trusted billing adapter rejects `coverage_transferred` events because a billing event alone cannot transactionally reassign a Company's coverage; the separate audited takeover transaction remains the supported path.
+- `npm run test:core`, Functions build, `npm run test:firebase` and final `npm run build` passed; the emulator suite now has 17 tests. Commit/push for this checkpoint are pending.
+
+Files changed since checkpoint 3: `packages/core/src/commercial.ts`, `packages/core/test/commercial.test.mjs`, `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, and this document.
+
 Files changed since checkpoint 2: `packages/sync/src/backup.js`, `packages/sync/test/backup.test.mjs`, `apps/windows/src-tauri/src/backup_restore.rs`, new `apps/windows/test/generate-native-restore-fixture.mjs`, new `apps/windows/test/native-restore-plan.json`, and this document.
 
 Known blocker: no external blocker. The native restore is an isolated active directory, but the current authoring UI/database selector does not open it. There is no production-safe cleanup scheduler, production email transport or real billing adapter. The exact post-grace hosted-read cutoff versus membership-based read until physical cleanup is a contract/implementation ambiguity; no rule change was made here.
 
-Exact next action: commit/push checkpoint 3, then continue with a read-only/open path for restored workspaces or an explicit import-activation UX decision. Do not merge a restored Company into the existing primary DB. Follow with the broader authority/Pro/race matrix and hosted-read cutoff decision before main integration.
+Exact next action: commit/push checkpoint 4, then continue with a read-only/open path for restored workspaces or an explicit import-activation UX decision. Do not merge a restored Company into the existing primary DB. Follow with the broader authority/Pro/race matrix and hosted-read cutoff decision before main integration.
 
 Uncommitted work at this checkpoint: none expected after commit; run `git status --short` to verify.
 

@@ -144,6 +144,8 @@ export function applyBillingEvent(state:CommercialState,event:BillingEvent,catal
  const target=String(event.payload.tierId??'');
  if(['subscription_started','subscription_upgrade'].includes(event.type)) {
   const plan=catalog[target];if(!plan||plan.family==='demo')throw Error('Unknown paid tier');
+  if(event.type==='subscription_upgrade'&&current.plan==='pro'&&plan.family==='company')throw Error('Pro-to-Company change requires a scheduled downgrade');
+  if(event.type==='subscription_upgrade'&&current.tierId===target&&state.cadence===event.payload.cadence)throw Error('Unchanged paid term requires renewal');
   next.plan=plan.family;next.tierId=target;next.catalogVersion=plan.version;
   next.seatIds=plan.family==='pro'?Array.from(new Set([state.subscriptionId,...next.seatIds])):[];
   if(plan.family==='company'&&next.coveredCompanyIds.length>1){
