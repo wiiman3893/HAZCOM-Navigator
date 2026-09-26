@@ -384,7 +384,8 @@ test('paid grace preserves published hazard read and backup eligibility while bl
  await call('createCompany',uid,{companyId,company});
  await call('beginPublication',uid,{companyId,revisionId:'grace-revision',parentRevisionId:null});
  await call('finalizePublication',uid,{companyId,revisionId:'grace-revision',dataset:payload,attachmentIds:[]});
- await db.doc(`subscriptions/${uid}`).update({paidThrough:new Date(Date.now()-86400000).toISOString(),graceEndsAt:new Date(Date.now()+13*86400000).toISOString()});
+ const graceNow=Date.now();
+ await db.doc(`subscriptions/${uid}`).update({paidThrough:new Date(graceNow-86400000).toISOString(),graceEndsAt:new Date(graceNow+13*86400000).toISOString()});
  const status=await call('getCompanyCoverageStatus',uid,{companyId});
  assert.equal(status.status,'grace');
  assert.equal(status.backupEligible,true);

@@ -61,6 +61,16 @@ Checkpoint 4 commit: `d76a6dbe5fc57304010ce8033a57aba8d40a0195`. It was pushed t
 - Emulator tests prove direct Member removal and restoration, an explicit Administrator promotion/demotion with correct `administratorCount`, continued inherited access while the seat is active, and direct Member restoration after seat removal.
 - `npm run test:firebase` passed twice consecutively with 17 tests after these changes. One earlier emulator run returned an `INVALID_ARGUMENT` failure with truncated output; the two full reruns passed. Treat the first failure as unresolved transient evidence rather than silently claiming every run passed.
 
+Checkpoint 5 commit: `5fef7042543ab017aa1525ff4290b8fc74b5392e`. It was pushed to the task branch; main remained unchanged.
+
+## Checkpoint 6 — anchored calendar renewals
+
+- Found a month-end drift defect: chaining `Jan 31 -> Feb 28 -> Mar 28` violated the documented calendar anniversary. New paid terms record `billingAnchorAt`; ordinary monthly/annual renewal computes from that original date so `Jan 31 -> Feb 28 -> Mar 31` and leap-day annual terms return to February 29 in a leap year. Payment recovery retains the prior full-term restart behavior and establishes a new anchor.
+- The trusted event adapter persists `billingAnchorAt`. Existing subscription documents without it fall back to their current term start; the original anchor cannot be reconstructed from an already drifted legacy term.
+- Core tests cover monthly, annual leap-day and recovery dates. `npm run test:core`, Functions build, `npm run build`, and final `npm run test:firebase` (17 tests) passed. An intermediate emulator run failed because the new grace test computed paid-through and grace-end from separate clock reads, exceeding the 14-day cap by milliseconds; the test now uses one timestamp and the complete rerun passed.
+
+Files changed since checkpoint 5: `packages/core/src/commercial.ts`, `packages/core/test/commercial.test.mjs`, `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
+
 Files changed since checkpoint 4: `firebase/functions/src/index.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
 
 Files changed since checkpoint 3: `packages/core/src/commercial.ts`, `packages/core/test/commercial.test.mjs`, `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, and this document.
@@ -69,7 +79,7 @@ Files changed since checkpoint 2: `packages/sync/src/backup.js`, `packages/sync/
 
 Known blocker: no external blocker. The native restore is an isolated active directory, but the current authoring UI/database selector does not open it. There is no production-safe cleanup scheduler, production email transport or real billing adapter. The exact post-grace hosted-read cutoff versus membership-based read until physical cleanup is a contract/implementation ambiguity; no rule change was made here.
 
-Exact next action: commit/push checkpoint 5, then continue with a read-only/open path for restored workspaces or an explicit import-activation UX decision. Do not merge a restored Company into the existing primary DB. Follow with the broader authority/Pro/race matrix and hosted-read cutoff decision before main integration.
+Exact next action: commit/push checkpoint 6, then continue with a read-only/open path for restored workspaces or an explicit import-activation UX decision. Do not merge a restored Company into the existing primary DB. Follow with the broader authority/Pro/race matrix and hosted-read cutoff decision before main integration.
 
 Uncommitted work at this checkpoint: none expected after commit; run `git status --short` to verify.
 

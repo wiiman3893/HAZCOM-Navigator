@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DEVELOPMENT_CATALOG,resolveCommercial,resolveCompanyCommercial,planCoverageCleanup,mayAuthorCompany,mayCreateWithinLimit,enforcePublicationLimits,nextAnniversary,proratedCents,applyBillingEvent,cleanupEligible,backupDeliveryMode,issueBackupToken,redeemBackupToken,InMemoryBackupDelivery} from '../dist/index.js';
+import {DEVELOPMENT_CATALOG,resolveCommercial,resolveCompanyCommercial,planCoverageCleanup,mayAuthorCompany,mayCreateWithinLimit,enforcePublicationLimits,nextAnniversary,nextAnchoredAnniversary,proratedCents,applyBillingEvent,cleanupEligible,backupDeliveryMode,issueBackupToken,redeemBackupToken,InMemoryBackupDelivery} from '../dist/index.js';
 
 test('Company and Pro Demo are permanent, bounded, and cannot publish or invite',()=>{
   const company=resolveCommercial({plan:'demo',demoType:'company',selectedDemoCompanyId:'a'},Date.UTC(2100,0,1));
@@ -80,6 +80,20 @@ test('anniversary dates and idempotent ordered billing events',()=>{
   assert.equal(resolveCommercial(canceled,Date.parse('2026-11-16T00:00:00Z')).capabilities.canAuthor,false);
 });
 
+test('month-end and leap-day renewals stay anchored to the original calendar anniversary',()=>{
+ const monthly=Date.parse('2026-01-31T12:30:00Z');
+ assert.equal(nextAnchoredAnniversary(new Date(monthly),new Date('2026-02-28T12:30:00Z'),'monthly').toISOString(),'2026-03-31T12:30:00.000Z');
+ const leap=new Date('2024-02-29T00:00:00Z');
+ assert.equal(nextAnchoredAnniversary(leap,new Date('2027-02-28T00:00:00Z'),'annual').toISOString(),'2028-02-29T00:00:00.000Z');
+ const initial={subscriptionId:'anchor-owner',plan:'demo',demoType:'company',catalogVersion:'v1',seatIds:['anchor-owner'],coveredCompanyIds:[],lastVersion:0,appliedEventIds:[],audit:[]};
+ const started=applyBillingEvent(initial,{id:'start',type:'subscription_started',subscriptionId:'anchor-owner',version:1,effectiveAt:new Date(monthly).toISOString(),source:'synthetic',payload:{tierId:'company',cadence:'monthly'}});
+ assert.equal(started.paidThrough,'2026-02-28T12:30:00.000Z');
+ assert.equal(started.billingAnchorAt,'2026-01-31T12:30:00.000Z');
+ const renewed=applyBillingEvent(started,{id:'renew',type:'subscription_renewed',subscriptionId:'anchor-owner',version:2,effectiveAt:started.paidThrough,source:'synthetic',payload:{}});
+ assert.equal(renewed.paidThrough,'2026-03-31T12:30:00.000Z');
+ assert.equal(renewed.billingAnchorAt,started.billingAnchorAt);
+});
+
 test('cleanup follows current coverage ownership',()=>{
   const old={subscriptionId:'pro-a',graceEndsAt:'2026-10-29T00:00:00Z'};
   const now=Date.parse('2026-10-30T00:00:00Z');
@@ -140,6 +154,8 @@ test('billing lifecycle rejects unsafe transitions and recovers deterministicall
  assert.equal(applyBillingEvent(failed,event('fail','payment_failed',1,'2026-11-15T00:00:00Z')),failed);
  const recovered=applyBillingEvent(failed,event('recover','payment_recovered',2,'2026-11-18T00:00:00Z'));
  assert.equal(recovered.paymentFailureAt,undefined);
+ assert.equal(recovered.billingAnchorAt,'2026-11-18T00:00:00.000Z');
+ assert.equal(recovered.paidThrough,'2026-12-18T00:00:00.000Z');
  assert.equal(resolveCommercial(recovered,Date.parse('2026-11-19T00:00:00Z')).status,'active');
  const cancelled=applyBillingEvent(recovered,event('cancel','subscription_cancel_at_period_end',3,'2026-11-20T00:00:00Z'));
  assert.throws(()=>applyBillingEvent(cancelled,event('bad-renew','subscription_renewed',4,cancelled.paidThrough)),/Cancelled subscription/);

@@ -105,6 +105,16 @@ export function addCalendarMonths(date:Date,months:number):Date {
  result.setUTCDate(Math.min(day,last));return result;
 }
 export function nextAnniversary(date:Date,cadence:Cadence):Date{return addCalendarMonths(date,cadence==='annual'?12:1);}
+/** Recompute from the original calendar anchor so February clamping never drifts later terms. */
+export function nextAnchoredAnniversary(anchor:Date,after:Date,cadence:Cadence):Date {
+ if(!Number.isFinite(anchor.getTime())||!Number.isFinite(after.getTime())||after.getTime()<anchor.getTime())throw Error('Invalid billing anniversary');
+ const step=cadence==='annual'?12:1;
+ const months=(after.getUTCFullYear()-anchor.getUTCFullYear())*12+after.getUTCMonth()-anchor.getUTCMonth();
+ let periods=Math.max(1,Math.floor(months/step));
+ let candidate=addCalendarMonths(anchor,periods*step);
+ while(candidate.getTime()<=after.getTime()){periods++;candidate=addCalendarMonths(anchor,periods*step);}
+ return candidate;
+}
 export function proratedCents(fullTermCents:number,termStart:number,termEnd:number,changeAt:number):number {
  if(!Number.isSafeInteger(fullTermCents)||fullTermCents<0||!Number.isFinite(termStart)||!Number.isFinite(termEnd)||!Number.isFinite(changeAt)||termEnd<=termStart)throw Error('Invalid proration term');
  return Math.round(fullTermCents*Math.max(0,Math.min(1,(termEnd-changeAt)/(termEnd-termStart))));
@@ -112,7 +122,7 @@ export function proratedCents(fullTermCents:number,termStart:number,termEnd:numb
 export type BillingEventType='subscription_started'|'subscription_renewed'|'subscription_upgrade'|'subscription_downgrade_scheduled'|'subscription_cancel_at_period_end'|'payment_failed'|'payment_recovered'|'seat_added'|'seat_removed'|'coverage_transferred';
 export interface BillingEvent {id:string;type:BillingEventType;subscriptionId:string;version:number;effectiveAt:string;payload:Record<string,unknown>;source:string;}
 export interface BillingAdjustment {eventId:string;kind:'upgrade'|'seat_add';creditCents:number;chargeCents:number;cadence:Cadence;}
-export interface CommercialState {subscriptionId:string;plan:string;demoType?:DemoType;tierId?:string;catalogVersion:string;cadence?:Cadence;priceVersion?:string;termStartedAt?:string;basePriceCents?:number;seatPriceCents?:number;billingAdjustments?:BillingAdjustment[];paidThrough?:string;graceEndsAt?:string;paymentFailureAt?:string;cancelAtPeriodEnd?:boolean;seatIds:string[];coveredCompanyIds:string[];selectedDemoCompanyId?:string|null;pendingDowngrade?:{tierId:string;retainedCompanyId:string;effectiveAt:string};lastVersion:number;appliedEventIds:string[];audit:{id:string;type:BillingEventType;at:string;source:string;version?:number;payloadSignature?:string}[];}
+export interface CommercialState {subscriptionId:string;plan:string;demoType?:DemoType;tierId?:string;catalogVersion:string;cadence?:Cadence;priceVersion?:string;termStartedAt?:string;billingAnchorAt?:string;basePriceCents?:number;seatPriceCents?:number;billingAdjustments?:BillingAdjustment[];paidThrough?:string;graceEndsAt?:string;paymentFailureAt?:string;cancelAtPeriodEnd?:boolean;seatIds:string[];coveredCompanyIds:string[];selectedDemoCompanyId?:string|null;pendingDowngrade?:{tierId:string;retainedCompanyId:string;effectiveAt:string};lastVersion:number;appliedEventIds:string[];audit:{id:string;type:BillingEventType;at:string;source:string;version?:number;payloadSignature?:string}[];}
 const EVENT_PAYLOAD_KEYS:Record<BillingEventType,readonly string[]>={
  subscription_started:['tierId','cadence','priceVersion','paidThrough','retainedCompanyId','administratorUid'],
  subscription_upgrade:['tierId','cadence','priceVersion','paidThrough','retainedCompanyId','administratorUid'],
@@ -166,6 +176,7 @@ export function applyBillingEvent(state:CommercialState,event:BillingEvent,catal
   next.cadence=cadence;next.priceVersion=String(event.payload.priceVersion??plan.version);
   next.basePriceCents=targetPrice;next.seatPriceCents=cadence==='monthly'?plan.additionalSeatMonthlyUsdCents:plan.additionalSeatAnnualUsdCents;
   next.termStartedAt=preserveAnniversary?state.termStartedAt??event.effectiveAt:event.effectiveAt;
+  next.billingAnchorAt=preserveAnniversary?state.billingAnchorAt??state.termStartedAt??event.effectiveAt:event.effectiveAt;
   const paid=event.payload.paidThrough;next.paidThrough=typeof paid==='string'?paid:preserveAnniversary?state.paidThrough:nextAnniversary(when,cadence).toISOString();
   if(!Number.isFinite(Date.parse(next.paidThrough??''))||Date.parse(next.paidThrough!)<=when.getTime())throw Error('Invalid paid-through date');
    next.graceEndsAt=new Date(Date.parse(next.paidThrough!)+GRACE_DAYS*DAY_MS).toISOString();next.cancelAtPeriodEnd=false;delete next.paymentFailureAt;
@@ -185,8 +196,12 @@ export function applyBillingEvent(state:CommercialState,event:BillingEvent,catal
    delete next.pendingDowngrade;
   }
   const base=new Date(Math.max(when.getTime(),Date.parse(next.paidThrough??event.effectiveAt)));
+  // Recovery keeps the existing full-term restart behavior; only ordinary renewal preserves the old anchor.
+  const previousAnchor=new Date(event.type==='payment_recovered'?base.toISOString():next.billingAnchorAt??next.termStartedAt??base.toISOString());
+  const anchor=Number.isFinite(previousAnchor.getTime())&&previousAnchor.getTime()<=base.getTime()?previousAnchor:base;
+  next.billingAnchorAt=anchor.toISOString();
   next.termStartedAt=base.toISOString();
-  next.paidThrough=nextAnniversary(base,next.cadence).toISOString();next.graceEndsAt=new Date(Date.parse(next.paidThrough)+GRACE_DAYS*DAY_MS).toISOString();delete next.paymentFailureAt;
+  next.paidThrough=nextAnchoredAnniversary(anchor,base,next.cadence).toISOString();next.graceEndsAt=new Date(Date.parse(next.paidThrough)+GRACE_DAYS*DAY_MS).toISOString();delete next.paymentFailureAt;
   if(event.type==='subscription_renewed')next.cancelAtPeriodEnd=false;
  } else if(event.type==='payment_failed'){
   const priorEnd=Date.parse(next.paidThrough??'');if(!Number.isFinite(priorEnd))throw Error('Missing paid term');

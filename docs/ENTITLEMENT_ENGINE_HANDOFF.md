@@ -48,4 +48,6 @@ The next emulator checkpoint adds a paid-grace denial matrix: published hazard r
 
 Company Administrators may now change the **direct** Membership embedded beneath a Pro seat's inherited Manager index. Removing that direct Membership retains inherited Manager access while the Pro seat remains active. Explicit Administrator promotion updates the effective role and count; demotion returns to inherited Manager. The emulator verifies those transitions and that seat removal restores a remaining direct Member role. A stale/mismatched Pro-seat index is denied.
 
+Ordinary billing renewal now uses a persisted calendar anchor. This prevents a January 31 monthly term from drifting to March 28 after February clamps to the 28th; it renews March 31. Leap-day annual anchors similarly return to February 29 in leap years. Synthetic payment recovery keeps its existing full-term restart semantics and starts a new anchor. Existing already-renewed records lacking the anchor can only use their current term start as a compatible fallback.
+
 The frozen branch `frozen/commercial-entitlement-v1-2026-09-25` records this validated local/emulator foundation. It is not a claim that billing, production email, cloud backup delivery, or cloud cleanup have been deployed. Never repoint this or any earlier frozen branch.
