@@ -19,6 +19,7 @@ pub fn run() {
             kind: MigrationKind::Up,
         },
         Migration { version: 3, description: "local_authoring", sql: include_str!("../../../../database/migrations/003_authoring.sql"), kind: MigrationKind::Up },
+        Migration { version: 4, description: "bulk_sds_import", sql: include_str!("../../../../database/migrations/004_bulk_sds_import.sql"), kind: MigrationKind::Up },
     ];
 
     tauri::Builder::default()
@@ -27,6 +28,7 @@ pub fn run() {
             browser_auth::google_browser_sign_in,
             publication_files::read_publication_sds,
             publication_files::store_authoring_sds,
+            publication_files::store_sds_import_source,
             authoring::authoring_batch
         ])
         .plugin(
