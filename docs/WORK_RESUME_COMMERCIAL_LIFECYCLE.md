@@ -101,6 +101,10 @@ Checkpoint 8 commit: `d31f23cae105d6f98224a27a2048925e6c9198ad`; it was pushed t
 
 Files changed in checkpoint 9: `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
 
+Checkpoint 9 commit: `d2157b8c8f9778589a3d5e95d4413e55a9c3eee9`; it was pushed to the task branch.
+
+Native workspace review after checkpoint 9: `apps/windows/src/data/database.ts` holds one cached `sqlite:hazcom-navigator.db` connection, the SQL plugin registers migrations only for that URL, and `authoring_batch` writes through that named pool. A restored database cannot safely become the authoring workspace by swapping a file path. A future change needs explicit workspace selection, permission rechecks, migration and SDS path routing, and an atomic way to fall back to the primary workspace. The read-only inspector is the currently validated boundary.
+
 Files changed since checkpoint 5: `packages/core/src/commercial.ts`, `packages/core/test/commercial.test.mjs`, `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
 
 Files changed since checkpoint 4: `firebase/functions/src/index.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
@@ -111,7 +115,7 @@ Files changed since checkpoint 2: `packages/sync/src/backup.js`, `packages/sync/
 
 Known blocker: no external blocker. The native restore is an isolated active directory, but the current authoring UI/database selector does not open it. There is no production-safe cleanup scheduler, production email transport or real billing adapter. The exact post-grace hosted-read cutoff versus membership-based read until physical cleanup is a contract/implementation ambiguity; no rule change was made here.
 
-Exact next action: commit/push checkpoint 9, then continue the broader authority/Pro/race matrix. A future authoring-workspace switch needs an explicit isolated-data design; do not merge a restored Company into the existing primary DB. Resolve the hosted-read cutoff ambiguity before main integration.
+Exact next action: continue the authority/Pro/race matrix, especially inherited-seat behavior across release, recovery and coverage transfer. Design a controlled authoring-workspace selector for the separate restore, with per-workspace SQL/migration/SDS routing and rollback; do not merge a restored Company into the existing primary DB. Resolve the hosted-read cutoff ambiguity before main integration. Run `git status --short`, fetch `origin/main`, and compare it with the recorded base before new edits.
 
 Uncommitted work at this checkpoint: none expected after commit; run `git status --short` to verify.
 
