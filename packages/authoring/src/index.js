@@ -1,4 +1,6 @@
 import {RELATIONSHIP_IDS,verificationDue,nextReviewDue,trainingStatus,latestDate,findPermission,mayCreateWithinLimit} from '@hazcom/core';
+import {analyzeSdsBatchPdf,assertDraftCoverage,materializeSdsCandidatePdf,sha256Hex,MAX_SDS_BATCH_BYTES} from './bulk-sds.js';
+export {analyzeSdsBatchPdf,detectSdsCandidates,assertDraftCoverage,materializeSdsCandidatePdf,sha256Hex,MAX_SDS_BATCH_BYTES,MAX_SDS_BATCH_PAGES} from './bulk-sds.js';
 
 export const fields={
  work_area:['name','location','poc_name','poc_email','poc_phone_number','description'],
@@ -62,7 +64,7 @@ export function summary(data){const active=k=>data[k].filter(r=>!r.deleted_at),a
 export function authoringService({sql,companyId,authorize,files,today=localDate}){
  stableId(companyId);let tail=Promise.resolve();
  const locked=fn=>{const next=tail.then(fn);tail=next.catch(()=>{});return next;};
- const check=async(kind='work_area',verb='read')=>{const a=await authorize();need(a.companyId===companyId&&a.active&&['manager','administrator'].includes(a.role)&&findPermission(a.role,verb,kind),'Active Company authoring permission required');return a;};
+ const check=async(kind='work_area',verb='read')=>{const a=await authorize();const permissionKind=String(kind).startsWith('sds_import')?'chemical_product':kind;need(a.companyId===companyId&&a.active&&['manager','administrator'].includes(a.role)&&findPermission(a.role,verb,permissionKind),'Active Company authoring permission required');return a;};
  const list=async kind=>{const [parent,,link]=config[kind];return sql.select(`SELECT e.*,o.${parent}_id${link?`,l.${link}_id`:''} FROM ${kind} e ${joins(kind)} WHERE ${scope(kind)} ORDER BY e.id`,[companyId]);};
  const creationLimit=async(kind,authority)=>{
   const key={work_area:'maxWorkAreasPerCompany',chemical_product:'maxChemicalProductsPerCompany',worker:'maxWorkersPerCompany'}[kind];
@@ -81,8 +83,23 @@ export function authoringService({sql,companyId,authorize,files,today=localDate}
  async function relations(kind,input){const [parent,,link]=config[kind];if(parent!=='company')await get(parent,input[`${parent}_id`]);if(link)await get(link,input[`${link}_id`]);}
  async function conflict(kind,input,id){if(!['work_area_product','work_area_assignment'].includes(kind))return;const [,,link]=config[kind];const rows=await list(kind);need(!rows.some(r=>r.id!==id&&!r.deleted_at&&r.work_area_id===input.work_area_id&&r[`${link}_id`]===input[`${link}_id`]&&(kind!=='work_area_assignment'||!r.ended_date||r.ended_date>today())),'An active relationship already exists; edit or restore it instead');}
  const trigger=(area,date)=>statement(`UPDATE work_area_assignment SET training_required_since=? WHERE deleted_at IS NULL AND (ended_date IS NULL OR ended_date>?) AND id IN (SELECT child_id FROM work_area_assignment__ownership WHERE work_area_id=?)`,[date,today(),area]);
+ const importSessions=()=>sql.select('SELECT * FROM sds_import_session WHERE company_id=? ORDER BY imported_at DESC,id',[companyId]);
+ const importPages=()=>sql.select('SELECT p.* FROM sds_import_page p JOIN sds_import_session s ON s.id=p.session_id WHERE s.company_id=? ORDER BY p.session_id,p.page_number',[companyId]);
+ const importDrafts=()=>sql.select('SELECT d.* FROM sds_import_draft d JOIN sds_import_session s ON s.id=d.session_id WHERE s.company_id=? ORDER BY d.session_id,d.ordinal',[companyId]);
+ const getImportSession=async id=>{stableId(id);const rows=await sql.select('SELECT * FROM sds_import_session WHERE id=? AND company_id=?',[id,companyId]);need(rows.length===1,'SDS import session not available in this Company');return rows[0];};
+ const getImportDraftRows=async sessionId=>(await sql.select('SELECT d.* FROM sds_import_draft d JOIN sds_import_session s ON s.id=d.session_id WHERE d.session_id=? AND s.company_id=? ORDER BY d.ordinal',[sessionId,companyId]));
+ const coverageRows=rows=>rows.map(r=>({startPage:Number(r.start_page),endPage:Number(r.end_page)}));
+ const cleanFilename=value=>String(value??'batch.pdf').split(/[\\/]/).at(-1).slice(0,255)||'batch.pdf';
+ const draftInsert=row=>insert('sds_import_draft',{id:row.id,session_id:row.session_id,ordinal:row.ordinal,start_page:row.start_page,end_page:row.end_page,confidence:row.confidence,reason:row.reason,detected_title:row.detected_title??null,child_relative_path:row.child_relative_path??null,child_sha256:row.child_sha256??null,child_size_bytes:row.child_size_bytes??null});
+ async function replaceImportDrafts(session,rows,change){
+  need(session.status==='review','This SDS batch review is already saved.');
+  rows=rows.map((row,index)=>({...row,ordinal:index+1,session_id:session.id,child_relative_path:null,child_sha256:null,child_size_bytes:null}));
+  assertDraftCoverage(coverageRows(rows),Number(session.page_count));
+  const v=await version();
+  await commit(v,'sds_import_session',session.id,'update',{bulkSdsImport:change},[statement('DELETE FROM sds_import_draft WHERE session_id=?',[session.id]),...rows.map(draftInsert)]);
+ }
  const api={
-  async snapshot(){return locked(async()=>{await check();const data={companyId};for(const kind of Object.keys(config))data[kind]=await list(kind);data.attachments=await sql.select("SELECT a.*,i.sha256 FROM dm_attachments a LEFT JOIN authoring_sds_integrity i ON i.attachment_id=a.id JOIN chemical_product__ownership o ON o.child_id=a.owner_id WHERE a.owner_type='chemical_product' AND o.company_id=? ORDER BY a.created_at DESC,a.id",[companyId]);data.activity=await sql.select("SELECT * FROM dm_change_history WHERE json_extract(changes_json,'$.companyId')=? ORDER BY changed_at DESC,id DESC LIMIT 20",[companyId]);await check();return decorate(data,today());});},
+  async snapshot(){return locked(async()=>{await check();const data={companyId};for(const kind of Object.keys(config))data[kind]=await list(kind);data.attachments=await sql.select("SELECT a.*,i.sha256 FROM dm_attachments a LEFT JOIN authoring_sds_integrity i ON i.attachment_id=a.id JOIN chemical_product__ownership o ON o.child_id=a.owner_id WHERE a.owner_type='chemical_product' AND o.company_id=? ORDER BY a.created_at DESC,a.id",[companyId]);data.sds_import_session=await importSessions();data.sds_import_page=await importPages();data.sds_import_draft=await importDrafts();data.activity=await sql.select("SELECT * FROM dm_change_history WHERE json_extract(changes_json,'$.companyId')=? ORDER BY changed_at DESC,id DESC LIMIT 20",[companyId]);await check();return decorate(data,today());});},
   async create(kind,input,id=crypto.randomUUID()){return locked(async()=>{const authority=await check(kind,'create');stableId(id);const row=validate(kind,input),v=await version();await relations(kind,input);await conflict(kind,input,id);
    const existing=await sql.select(`SELECT id FROM ${kind} WHERE id=?`,[id]);if(existing.length){const old=await get(kind,id,false);need(Object.entries(row).every(([k,val])=>old[k]===val)&&config[kind].filter((_,i)=>i===0||i===2).every(p=>p==='company'||old[`${p}_id`]===input[`${p}_id`]),'ID already belongs to different data');return id;}
    await creationLimit(kind,authority);
@@ -108,7 +125,42 @@ export function authoringService({sql,companyId,authorize,files,today=localDate}
    const relativePath=await files.stage(companyId,id,bytes);need(typeof relativePath==='string'&&!relativePath.includes('..')&&!relativePath.includes(':'),'Unsafe managed SDS path');
    await commit(v,'chemical_product',productId,'update',{sds:{id,sha256,sizeBytes:bytes.length,originalFilename:filename}},[statement("UPDATE dm_attachments SET slot_key='sds_history' WHERE owner_type='chemical_product' AND owner_id=? AND slot_key='sds'",[productId]),insert('dm_attachments',{id,owner_type:'chemical_product',owner_id:productId,slot_key:'sds',relative_path:relativePath,original_filename:String(filename).split(/[\\/]/).at(-1).slice(0,255),mime_type:'application/pdf',size_bytes:bytes.length,created_at:new Date().toISOString()}),insert('authoring_sds_integrity',{attachment_id:id,sha256})]);return id;});},
   async unlinkSds(productId){return locked(async()=>{await check('chemical_product','update');const v=await version();await get('chemical_product',productId);await commit(v,'chemical_product',productId,'update',{sds:'unlinked; retained in local history'},[statement("UPDATE dm_attachments SET slot_key='sds_history' WHERE owner_type='chemical_product' AND owner_id=? AND slot_key='sds'",[productId])]);});},
-  async readSds(productId,attachmentId){return locked(async()=>{await check();await get('chemical_product',productId,false);const rows=await sql.select("SELECT a.*,i.sha256 FROM dm_attachments a LEFT JOIN authoring_sds_integrity i ON i.attachment_id=a.id WHERE a.id=? AND a.owner_type='chemical_product' AND a.owner_id=?",[stableId(attachmentId),productId]);need(rows.length===1,'SDS does not belong to this Product');const bytes=await files.read(rows[0].relative_path);need(bytes.length===rows[0].size_bytes,'Managed SDS size changed');if(rows[0].sha256){const sha=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');need(sha===rows[0].sha256,'Managed SDS hash changed');}await check();return bytes;});}
+  async readSds(productId,attachmentId){return locked(async()=>{await check();await get('chemical_product',productId,false);const rows=await sql.select("SELECT a.*,i.sha256 FROM dm_attachments a LEFT JOIN authoring_sds_integrity i ON i.attachment_id=a.id WHERE a.id=? AND a.owner_type='chemical_product' AND a.owner_id=?",[stableId(attachmentId),productId]);need(rows.length===1,'SDS does not belong to this Product');const bytes=await files.read(rows[0].relative_path);need(bytes.length===rows[0].size_bytes,'Managed SDS size changed');if(rows[0].sha256){const sha=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');need(sha===rows[0].sha256,'Managed SDS hash changed');}await check();return bytes;});},
+  async importSdsBatch(bytes,filename,id=crypto.randomUUID()){return locked(async()=>{
+   await check('sds_import_session','create');stableId(id);need(bytes instanceof Uint8Array&&bytes.length<=MAX_SDS_BATCH_BYTES,'Choose a PDF no larger than 250 MiB');
+   const analysis=await analyzeSdsBatchPdf(bytes),sha256=await sha256Hex(bytes),existing=await sql.select('SELECT * FROM sds_import_session WHERE id=?',[id]);
+   if(existing.length){need(existing[0].company_id===companyId&&existing[0].source_sha256===sha256&&Number(existing[0].source_size_bytes)===bytes.length,'SDS import session ID conflict');return id;}
+   const relativePath=await files.stage(companyId,`batch_${id}`,bytes);need(typeof relativePath==='string'&&!relativePath.includes('..')&&!relativePath.includes(':'),'Unsafe managed SDS batch path');
+   const importedAt=new Date().toISOString(),v=await version();
+   const statements=[insert('sds_import_session',{id,company_id:companyId,source_filename:cleanFilename(filename),source_relative_path:relativePath,source_sha256:sha256,source_size_bytes:bytes.length,page_count:analysis.pageCount,imported_at:importedAt,status:'review'})];
+   for(const page of analysis.pages)statements.push(insert('sds_import_page',{session_id:id,page_number:page.pageNumber,extracted_text:page.text.slice(0,32000),text_status:page.textStatus,signals_json:JSON.stringify(page.signals)}));
+   analysis.candidates.forEach((candidate,index)=>statements.push(draftInsert({id:crypto.randomUUID(),session_id:id,ordinal:index+1,start_page:candidate.startPage,end_page:candidate.endPage,confidence:candidate.confidence,reason:candidate.reason,detected_title:candidate.detectedTitle})));
+   assertDraftCoverage(analysis.candidates,analysis.pageCount);
+   await commit(v,'sds_import_session',id,'create',{bulkSdsImport:{filename:cleanFilename(filename),sha256,sizeBytes:bytes.length,pageCount:analysis.pageCount,candidates:analysis.candidates.length}},statements);
+   return id;
+  });},
+  async splitImportDraft(sessionId,draftId,splitPage,id=crypto.randomUUID()){return locked(async()=>{
+   await check('sds_import_session','update');stableId(sessionId);stableId(draftId);stableId(id);const session=await getImportSession(sessionId),rows=await getImportDraftRows(sessionId),index=rows.findIndex(r=>r.id===draftId);need(index>=0,'SDS import draft not found');
+   const row=rows[index],page=Number(splitPage);need(Number.isInteger(page)&&page>Number(row.start_page)&&page<=Number(row.end_page),'Split page must be inside this candidate after its first page');
+   const left={...row,end_page:page-1,confidence:'manual',reason:`Manual split before page ${page}`},right={...row,id,start_page:page,confidence:'manual',reason:`Manual split at page ${page}`,detected_title:null};
+   rows.splice(index,1,left,right);await replaceImportDrafts(session,rows,{action:'split',draftId,page});
+  });},
+  async mergeImportDraft(sessionId,draftId,direction){return locked(async()=>{
+   await check('sds_import_session','update');stableId(sessionId);stableId(draftId);need(direction==='previous'||direction==='next','Invalid merge direction');const session=await getImportSession(sessionId),rows=await getImportDraftRows(sessionId),index=rows.findIndex(r=>r.id===draftId);need(index>=0,'SDS import draft not found');
+   const other=direction==='previous'?index-1:index+1;need(other>=0&&other<rows.length,`No ${direction} candidate to merge`);
+   const first=Math.min(index,other),second=Math.max(index,other),a=rows[first],b=rows[second];
+   const merged={...a,end_page:b.end_page,confidence:'manual',reason:`Manually merged pages ${a.start_page}-${b.end_page}`,detected_title:a.detected_title??b.detected_title};
+   rows.splice(first,2,merged);await replaceImportDrafts(session,rows,{action:'merge',draftId,direction});
+  });},
+  async readImportSource(sessionId){return locked(async()=>{await check();const session=await getImportSession(sessionId),bytes=await files.read(session.source_relative_path);need(bytes.length===Number(session.source_size_bytes),'Managed SDS batch size changed');need(await sha256Hex(bytes)===session.source_sha256,'Managed SDS batch hash changed');await check();return bytes;});},
+  async saveImportReview(sessionId){return locked(async()=>{
+   await check('sds_import_session','update');const session=await getImportSession(sessionId);need(session.status==='review','This SDS batch review is already saved.');const rows=await getImportDraftRows(sessionId);assertDraftCoverage(coverageRows(rows),Number(session.page_count));
+   const source=await files.read(session.source_relative_path);need(source.length===Number(session.source_size_bytes),'Managed SDS batch size changed');need(await sha256Hex(source)===session.source_sha256,'Managed SDS batch hash changed');
+   const materialized=[];
+   for(const row of rows){const bytes=await materializeSdsCandidatePdf(source,Number(row.start_page),Number(row.end_page)),sha=await sha256Hex(bytes),fileId=`draft_${row.id}_${row.start_page}_${row.end_page}`,relative=await files.stage(companyId,fileId,bytes);materialized.push({...row,child_relative_path:relative,child_sha256:sha,child_size_bytes:bytes.length});}
+   const v=await version();await commit(v,'sds_import_session',session.id,'update',{bulkSdsImport:{action:'save-review',draftCount:materialized.length}},[...materialized.map(row=>statement('UPDATE sds_import_draft SET child_relative_path=?,child_sha256=?,child_size_bytes=? WHERE id=? AND session_id=?',[row.child_relative_path,row.child_sha256,row.child_size_bytes,row.id,session.id])),statement("UPDATE sds_import_session SET status='reviewed' WHERE id=? AND company_id=?",[session.id,companyId])]);
+  });},
+  async readImportDraft(sessionId,draftId){return locked(async()=>{await check();const session=await getImportSession(sessionId),rows=await getImportDraftRows(sessionId),draft=rows.find(r=>r.id===stableId(draftId));need(draft?.child_relative_path,'SDS draft has not been materialized');const bytes=await files.read(draft.child_relative_path);need(bytes.length===Number(draft.child_size_bytes),'Managed SDS draft size changed');need(await sha256Hex(bytes)===draft.child_sha256,'Managed SDS draft hash changed');need(Number(draft.start_page)>=1&&Number(draft.end_page)<=Number(session.page_count),'Invalid stored SDS draft range');await check();return bytes;});}
  };
  return api;
 }
