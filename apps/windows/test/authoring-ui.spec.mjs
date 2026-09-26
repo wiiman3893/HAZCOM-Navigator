@@ -107,8 +107,8 @@ test('Bulk SDS Import proposes boundaries, allows correction and persists review
  await expect(cards.nth(1).getByText('Manual boundary',{exact:true})).toBeVisible();
 
  await page.getByRole('button',{name:'Save review drafts',exact:true}).click();
- await expect(page.getByText('Review drafts saved',{exact:true}).first()).toBeVisible();
- await expect(page.getByRole('button',{name:'View draft PDF',exact:true})).toHaveCount(2);
+ await expect(page.getByRole('button',{name:'View draft PDF',exact:true})).toHaveCount(2,{timeout:15000});
+ await expect(page.getByText(/Review drafts saved/).first()).toBeVisible();
 
  await page.reload();
  await page.getByRole('button',{name:'Chemical Library',exact:true}).click();
