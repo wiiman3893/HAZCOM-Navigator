@@ -1,0 +1,27 @@
+name: Bulk SDS Import validation
+on:
+  pull_request:
+    branches:
+      - validation/bulk-sds-import-m1-2026-09-26
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: npm test
+        run: npm test
+      - name: Authoring tests
+        run: npm run test:authoring
+      - name: Authoring UI tests
+        run: npm run test:authoring:ui
+      - name: Build
+        run: npm run build
+      - name: Rust unit tests
+        run: cargo test --manifest-path apps/windows/src-tauri/Cargo.toml --lib
