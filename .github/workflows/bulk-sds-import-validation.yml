@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npm run build:authoring
       - run: node --test packages/authoring/test/bulk-sds-import.test.mjs
       - run: npm test
