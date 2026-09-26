@@ -148,11 +148,18 @@ export const setMembership = onCall(async request => {
     const isAdmin = data.active && targetRole === 'administrator';
     const count = company.get('administratorCount') + Number(isAdmin) - Number(wasAdmin);
     if (count < 1 && resolveCommercial(subscription.data()).plan==='company') denied('Cannot remove the last Company administrator.');
-    if(previous.get('proTeamSubscriptionId'))denied('Pro-team seats are managed through the commercial subscription.');
+    const inheritedSubscriptionId=previous.get('proTeamSubscriptionId');
+    if(inheritedSubscriptionId){
+      const seats=subscription.get('seatIds');
+      if(actor.get('role')!=='administrator'||inheritedSubscriptionId!==subscription.get('accountId')||resolveCommercial(subscription.data()).plan!=='pro'||!Array.isArray(seats)||!seats.includes(targetUid))denied('Only a Company Administrator may change a current Pro seat direct Membership.','STALE_PRO_INHERITANCE');
+    }
     const oldWorker = previous.get('workerId');
     if (oldWorker && (oldWorker !== workerId || !data.active)) tx.delete(db.doc(`companies/${companyId}/workerLinks/${oldWorker}`));
     if (workerId && data.active) tx.set(db.doc(`companies/${companyId}/workerLinks/${workerId}`),{uid:targetUid});
-    const member = { uid:targetUid, companyId, role:targetRole, active:data.active, workerId, updatedAt:FieldValue.serverTimestamp() };
+    const direct=inheritedSubscriptionId?(data.active?{role:targetRole,active:true,workerId}:null):null;
+    const member = inheritedSubscriptionId
+      ? {uid:targetUid,companyId,role:direct?.role==='administrator'?'administrator':'manager',active:true,workerId:direct?.workerId??null,proTeamSubscriptionId:inheritedSubscriptionId,directMembership:direct,updatedAt:FieldValue.serverTimestamp()}
+      : {uid:targetUid,companyId,role:targetRole,active:data.active,workerId,updatedAt:FieldValue.serverTimestamp()};
     tx.set(ref,member); tx.set(db.doc(`accounts/${targetUid}/memberships/${companyId}`),member);
     tx.update(company.ref,{administratorCount:count});
   });

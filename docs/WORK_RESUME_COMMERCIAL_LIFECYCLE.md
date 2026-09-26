@@ -53,13 +53,23 @@ Checkpoint 3 commit: `75389b31f567f48f9ce6d88787281cf919bc10ba`. The task branch
 - Provider-neutral lifecycle rejects an immediate Pro-to-Company change (the contract requires a scheduled downgrade) and rejects a same-tier/same-cadence "upgrade" that should be a renewal. The trusted billing adapter rejects `coverage_transferred` events because a billing event alone cannot transactionally reassign a Company's coverage; the separate audited takeover transaction remains the supported path.
 - `npm run test:core`, Functions build, `npm run test:firebase` and final `npm run build` passed; the emulator suite now has 17 tests. Commit/push for this checkpoint are pending.
 
+Checkpoint 4 commit: `d76a6dbe5fc57304010ce8033a57aba8d40a0195`. It was pushed to the task branch; main remained unchanged.
+
+## Checkpoint 5 — direct Membership and Pro inheritance separation
+
+- Found a real authorization defect: `setMembership` rejected all changes to a Pro seat's materialized document, including a client's explicit direct Membership. A Company Administrator can now update or remove only the direct Membership while current Pro coverage keeps inherited Manager access. The callable rejects stale inherited indexes and still prevents an inherited-only Pro Manager from appointing Administrators.
+- Emulator tests prove direct Member removal and restoration, an explicit Administrator promotion/demotion with correct `administratorCount`, continued inherited access while the seat is active, and direct Member restoration after seat removal.
+- `npm run test:firebase` passed twice consecutively with 17 tests after these changes. One earlier emulator run returned an `INVALID_ARGUMENT` failure with truncated output; the two full reruns passed. Treat the first failure as unresolved transient evidence rather than silently claiming every run passed.
+
+Files changed since checkpoint 4: `firebase/functions/src/index.ts`, `firebase/functions/test/foundation.test.mjs`, `docs/ENTITLEMENT_ENGINE_HANDOFF.md`, and this document.
+
 Files changed since checkpoint 3: `packages/core/src/commercial.ts`, `packages/core/test/commercial.test.mjs`, `firebase/functions/src/commercial-admin.ts`, `firebase/functions/test/foundation.test.mjs`, and this document.
 
 Files changed since checkpoint 2: `packages/sync/src/backup.js`, `packages/sync/test/backup.test.mjs`, `apps/windows/src-tauri/src/backup_restore.rs`, new `apps/windows/test/generate-native-restore-fixture.mjs`, new `apps/windows/test/native-restore-plan.json`, and this document.
 
 Known blocker: no external blocker. The native restore is an isolated active directory, but the current authoring UI/database selector does not open it. There is no production-safe cleanup scheduler, production email transport or real billing adapter. The exact post-grace hosted-read cutoff versus membership-based read until physical cleanup is a contract/implementation ambiguity; no rule change was made here.
 
-Exact next action: commit/push checkpoint 4, then continue with a read-only/open path for restored workspaces or an explicit import-activation UX decision. Do not merge a restored Company into the existing primary DB. Follow with the broader authority/Pro/race matrix and hosted-read cutoff decision before main integration.
+Exact next action: commit/push checkpoint 5, then continue with a read-only/open path for restored workspaces or an explicit import-activation UX decision. Do not merge a restored Company into the existing primary DB. Follow with the broader authority/Pro/race matrix and hosted-read cutoff decision before main integration.
 
 Uncommitted work at this checkpoint: none expected after commit; run `git status --short` to verify.
 
