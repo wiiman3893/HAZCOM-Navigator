@@ -1,0 +1,36 @@
+# HazCom Navigator diagnostic toolbox
+
+Run from the repository root with Node 24 and installed npm dependencies:
+
+```text
+npm run diagnostics:quick
+npm run diagnostics
+npm run diagnostics:full
+npm run diagnostics:cloud
+```
+
+`diagnostics:quick` is the fast, local, read-only pass: Git state, tool versions, SQLite integrity and Company-scoped counts, active SDS bytes/hash checks, authoring projection, publication journal, and bounded local errors. `diagnostics` is the recommended handoff command. It also checks the live remote main, attempts a **read-only** development-cloud audit when Firebase CLI credentials are available, and runs focused diagnostic and Windows-publication tests. `diagnostics:cloud` does the same local inventory and the cloud audit without running tests. `diagnostics:full` adds `npm test`, `npm run test:firebase` (demo emulators), `npm run test:windows:publication`, the app build, and Functions build. Diagnostic full mode suppresses the existing benchmark tests' tracked JSON snapshot rewrites while still running their measurements and assertions. No mode runs the 5,000-SDS scale stress suite.
+
+The collector refuses any cloud target except `hazcom-navigator-dev`, including `command-rhythm`. It reads the project from `firebase/.firebaserc` unless `--project hazcom-navigator-dev` is supplied. It does **not** publish, deploy, change IAM, invoke cleanup, mutate Firestore/Storage, or repair SQLite. The cloud audit uses the existing Firebase CLI login and Google API metadata reads; it performs no interactive sign-in. If credentials are absent, cloud sections are `UNAVAILABLE` and the local bundle still succeeds. The report labels privileged CLI reads explicitly: they establish cloud metadata and revision facts, **not** Firebase client Rules authorization. The reported commercial capabilities come from read-only cloud documents passed through the repository's local resolver, not an authenticated client callable. Cached/local evidence is kept separate from that cloud snapshot.
+
+Each run creates an ignored `diagnostics/output/<UTC timestamp>/` directory with:
+
+- `diagnostic-summary.md` — a short **CHAT HANDOFF** plus working, failing, changed, deployed, local-only, unverified, and next-check sections.
+- `diagnostic-report.json` — deterministic collector facts in versioned schema `diagnosticSchemaVersion: 1`.
+- `diagnostic-bundle.zip` — a portable archive of exactly those two sanitized reports.
+
+Upload the ZIP to ordinary ChatGPT chat, or upload both Markdown and JSON. Ask the next developer/model to use the evidence labels and investigate the failing or unverified section. The JSON is suitable for a future external analysis system, but this command does not send it anywhere. Generated bundles are Git-ignored; inspect one before sharing if local privacy requirements are stricter than the default redaction.
+
+`PASS` means that particular check completed and its stated invariant held. `FAIL` means it completed and found a concrete error. `WARN` means the check completed with a condition needing attention, such as a dirty worktree or a pending journal attempt. `UNAVAILABLE` means a source could not be read; `UNVERIFIED` means the mode or available evidence did not attempt the check. The overall status is conservative and may be `WARN` for a healthy local quick run because cloud and tests were not run. It is not a product acceptance verdict.
+
+The local SQLite connection is opened read-only with `PRAGMA query_only=ON`. It reports the Tauri migration ledger when present, `integrity_check`, `foreign_key_check`, Company-scoped active/Trash counts, and the existing authoring service's derived state. It compares the local migration with the migration files in the checkout; migration 4 adds Bulk SDS Import review drafts, for which diagnostics reports only a Company-scoped session count, never page snippets or source PDF bytes. The existing publication builder validates active Company relationships and produces the local fingerprint and schema-2 content hash. A separate read-only publication-journal connection reports attempt/receipt IDs and whether an attempt remains pending. SDS inspection checks only current, active Product attachments: file existence, PDF signature, size, and SHA-256 against local integrity metadata. It reports paths relative to managed attachment storage, never PDF bytes or text. With several local Companies, the collector chooses a unique highest-numbered local publication receipt **as an inference**; use `--company <Company ID>` to select one explicitly.
+
+Cloud inspection reads Functions runtime/state, Cloud Run invocation settings and IAM bindings, configured Firestore index state, Firestore and Storage rules release IDs, bucket metadata, bounded recent warning/error logs, and the selected Company's current published revision. It reads the selected Company's coverage/plan and the journal-linked Account's role only when those documents are available. It does not claim that reading a revision through privileged CLI credentials proves a Member or Manager client can read it.
+
+The report contains filenames and concise diff statistics, not source diffs. It includes recent error/warning lines only, with centralized redaction for Authorization and Cookie headers, bearer/JWT/OAuth/Firebase tokens, signed URL credentials, service-account private keys, passwords and common secret fields. It never includes environment variables, `.env`, raw SQLite copies, SDS PDFs, OCR/SDS text, browser profiles, credential caches, or billing secrets. There is no raw SQLite export option in this toolbox; any future copy command must be a separate explicit opt-in with privacy review.
+
+Optional flags are `--company <id>`, `--project hazcom-navigator-dev`, `--db <path>`, `--journal <path>`, `--attachments <directory>`, and `--output <directory>`. The path flags are for a local diagnostic fixture or nonstandard app installation; they do not change the database or managed files. If the native app holds a lock, the report marks SQLite `UNAVAILABLE` or `FAIL` with the actual read error and still emits the bundle. If source packages have not been built after a fresh checkout, run the normal app build first so the local projection imports exist. When a local database is still at migration 3 under migration-4 source, the authoring summary is unavailable, but the collector still checks integrity, scoped counts, SDS bytes, and existing publication relationships without migrating the database.
+
+At integration time, the current upstream lockfile did not pass `npm ci` on Node 24 (`@hazcom/core` workspace entries were reported missing). `npm install --package-lock=false --ignore-scripts` installed dependencies for isolated validation without changing the lockfile. This is a source-installation limitation, not a diagnostic or Firebase failure.
+
+Run `npm run test:diagnostics` for focused schema, redaction, Git, read-only SQLite, journal, SDS failure, project guard, refusal, and degraded-output tests. The cloud auditor will show a limitation as `UNAVAILABLE` rather than silently inferring a pass. In particular, the remaining live Member, Demo, nonmember SDS, and privileged-write denial checks remain separate acceptance work and are not performed by diagnostics.

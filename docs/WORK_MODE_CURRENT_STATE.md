@@ -1,9 +1,11 @@
-# HazCom Navigator current Work state
+# HazCom Navigator schema-2 acceptance state
 
-Updated: 2026-09-26 07:02 America/Chicago. Resume point for the schema-2 development-cloud acceptance task.
+Updated: September 26, 2026. Resume point for the schema-2 development-cloud acceptance task, preserved alongside the [diagnostic toolbox](DIAGNOSTIC_TOOLBOX.md). Use `npm run diagnostics` for a fresh source/cloud/local-state snapshot; the SHA below is the preceding product checkpoint, not a permanent current-main assertion.
 
-- Canonical repository: `C:\Users\Me\Documents\coding projects\HAZCOM Navigator`, main `440b1635f00996ec7fc0b7ec6929850b319496d5` before this task's commit. The local `origin/main` tracking ref matched it; remote confirmation/push remains.
-- Isolated writable worktree: `C:\Users\Me\.codex\.chatgpt-projects\g-p-6a82f26b189c8191a8d12e6bf588ffce\hazcom-publication-worktree`, detached from that SHA. The canonical checkout has the three source/test edits; this worktree also has the updated documentation and read-only cloud verification scripts. Copy approved docs/source to canonical main before commit. Preserve canonical untracked `Setup-HazComNavigator.ps1` and all frozen branches.
+This handoff covers schema-2 acceptance. The newer Bulk SDS Import milestone is documented in [implementation status](IMPLEMENTATION_STATUS.md); diagnostic collection does not alter that feature or migrate local databases.
+
+- Schema-2 native acceptance product checkpoint: `ba0236c866e5cbb8dfc71933d295f0aa559991d3`. Local and remote main matched that exact SHA after its push. Diagnostic tooling follows it without changing the deployed backend.
+- The isolated acceptance worktree remains detached from pre-change SHA `440b163` and retains generated synthetic PDFs and read-only cloud verification scripts; it was not committed. Preserve the pre-existing untracked `Setup-HazComNavigator.ps1` and every frozen branch.
 - Deployed backend source: `440b1635f00996ec7fc0b7ec6929850b319496d5`, 23 Functions, Firestore rules/indexes, private Storage rules in **only** `hazcom-navigator-dev`. This task changed no backend source, rules, or IAM roles; no Functions redeploy required. Cloud Run invocation settings were audited after the prior configuration change.
 
 ## Completed
@@ -19,10 +21,9 @@ Updated: 2026-09-26 07:02 America/Chicago. Resume point for the schema-2 develop
 
 ## Remaining and exact next action
 
-1. The updated handoffs and source/test files have been copied to canonical main. The worktree also has a generated synthetic PDF and read-only verification scripts; retain those as local acceptance artifacts. Do not commit user-specific CLI path, UID or hard-coded account information unnecessarily.
-2. Review the canonical diff; commit the validated Windows journal/pointer fixes, focused test and documentation to main; push and confirm the remote SHA. Leave `Setup-HazComNavigator.ps1` untouched. Do not modify any frozen branch.
-3. Remaining **live** security proof: authenticated nonmember SDS denial; Member and Demo trusted publication denial; direct privileged-field write denial. Emulator tests cover all these classes, but they are not live-cloud passes. A proposed real-cloud direct-write probe was rejected by automatic approval review because it could alter the Company pointer or Membership role. Do not route around that rejection. Obtain explicit approval for a specific safe test-identity/workflow before attempting such cloud mutations.
+1. The validated Windows journal/pointer fixes, focused test and documentation were committed and pushed as `ba0236c866e5cbb8dfc71933d295f0aa559991d3`. `Setup-HazComNavigator.ps1` was untouched; no frozen branch was created or modified. This useful post-push status update was retained in the subsequent diagnostic-toolbox work.
+2. Remaining **live** security proof: authenticated nonmember SDS denial; Member and Demo trusted publication denial; direct privileged-field write denial. Emulator tests cover all these classes, but they are not live-cloud passes. A proposed real-cloud direct-write probe was rejected by automatic approval review because it could alter the Company pointer or Membership role. The user declined a separate test identity/Company and chose to leave these live checks pending. Do not route around that decision.
 
 ## Freeze and DO NOT CLAIM YET
 
-Do **not** create `frozen/firebase-schema2-live-dev-2026-09-25` until all live acceptance gates, including the remaining security proof, pass. Do not claim live authenticated nonmember/Member/Demo denial or direct-write denial. Do not claim a final committed/pushed SHA until Git confirms it. Native publication, independent cloud data/replica integrity, signed-in SDS read, anonymous SDS denial and local-change detection are verified.
+Do **not** create `frozen/firebase-schema2-live-dev-2026-09-25` until all live acceptance gates, including the remaining security proof, pass. Do not claim live authenticated nonmember/Member/Demo denial or direct-write denial. Native publication, independent cloud data/replica integrity, signed-in SDS read, anonymous SDS denial, local-change detection, and committed/pushed main SHA are verified.

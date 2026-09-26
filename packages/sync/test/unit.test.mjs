@@ -56,7 +56,7 @@ test('Small, Medium, Large capacity and local SQLite performance evidence',async
       measurements.push({size,...p.metrics,importMs,authorDbBytes:await f.dbSize(),replicaDbBytes:(await stat(path.join(f.folder,'replica.db'))).size,mode:'Local SQLite benchmark against legacy schema 1 limits; schema 2 scale evidence is recorded separately'});
     } finally {target.close();f.sql.close();}
   }
-  await writeFile(new URL('../../../docs/publication-sync-measurements.json',import.meta.url),JSON.stringify({measuredAt:new Date().toISOString(),node:process.version,limits,measurements},null,2)+'\n');
+  if(!process.env.HAZCOM_DIAGNOSTICS_NO_MEASUREMENTS)await writeFile(new URL('../../../docs/publication-sync-measurements.json',import.meta.url),JSON.stringify({measuredAt:new Date().toISOString(),node:process.version,limits,measurements},null,2)+'\n');
   console.log(JSON.stringify(measurements));
 });
 

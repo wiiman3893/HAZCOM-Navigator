@@ -25,7 +25,12 @@
     "build:authoring": "npm run build:core && npm run build -w @hazcom/authoring",
     "test:authoring": "npm run build:authoring && npm run test -w @hazcom/authoring",
     "test:windows:publication": "npm run build:sync && node --test apps/windows/test/publication-workflow.test.mjs",
-    "test:authoring:ui": "playwright test --config apps/windows/test/playwright.config.mjs"
+    "test:authoring:ui": "playwright test --config apps/windows/test/playwright.config.mjs",
+    "diagnostics:quick": "node scripts/diagnostics.mjs quick",
+    "diagnostics": "node scripts/diagnostics.mjs normal",
+    "diagnostics:full": "node scripts/diagnostics.mjs full",
+    "diagnostics:cloud": "node scripts/diagnostics.mjs cloud",
+    "test:diagnostics": "node --test scripts/diagnostics/*.test.mjs"
   },
   "devDependencies": {
     "firebase": "12.19.0",

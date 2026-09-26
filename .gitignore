@@ -32,3 +32,6 @@ apps/windows/src-tauri/gen/
 
 **/test-results/
 **/playwright-report/
+
+# Local diagnostic bundles; never commit captured user or cloud state.
+diagnostics/output/
