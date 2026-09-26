@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - dev/bulk-sds-import-m1-2026-09-26
+  pull_request:
+    branches:
+      - main
 jobs:
   validate:
     runs-on: windows-latest
