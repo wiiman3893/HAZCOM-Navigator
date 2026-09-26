@@ -1,12 +1,12 @@
 # Implementation status
 
-## Firebase schema-2 development deployment — live acceptance pending
+## Firebase schema-2 development deployment — native publication and replica proven; security checks pending
 
-On September 25, 2026, the coordinated schema-2 Functions, Firestore rules/indexes and Storage rules were deployed to `hazcom-navigator-dev`. The Functions package was fixed to include its private `@hazcom/core` dependency. The native app restored the existing Google Account and Company context, but opening authoring is blocked by Cloud Run's invocation setting before Firebase callable authorization runs. No schema-2 real-cloud publication or replica has been accepted yet. See [the deployment handoff](FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md) for exact evidence and remaining checks. Earlier sections below describe their historical checkpoints.
+The coordinated schema-2 Functions, Firestore rules/indexes and Storage rules are deployed to `hazcom-navigator-dev`. All 23 client-facing Cloud Run services were audited with Firebase invocation reaching application authorization. On September 26 the authenticated native Windows app published synthetic schema-2 revisions 2 and 3, with 17 records and 3 SDS each. A separate clean SQLite receiver imported revision 2, preserved it after an injected corrupted-SDS failure, then atomically activated revision 3. The receiver's cloud transport used privileged read-only CLI credentials, so client Rules authorization was checked separately: signed-in Firebase SDK SDS read succeeded and anonymous SDS URLs returned 403. Live authenticated nonmember/Member/Demo and privileged-write denial remain to be proven before a frozen acceptance checkpoint. See [the deployment handoff](FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md) for exact evidence. Earlier sections below describe historical checkpoints.
 
 ## Windows schema-2 publication UI — local/emulator checkpoint
 
-Reports & Export now has readiness, Publish/Retry, staged progress, current revision and local-unpublished-change status for an authorized Manager/Administrator. Readiness checks the Company-scoped projection, schema-2 plan, capability/role, cloud Company context and locally recorded SDS SHA-256. The existing publisher remains authoritative for staging, finalization and idempotent resume. Controller and browser acceptance tests use synthetic data; schema-2 backend validation uses Firebase emulators. See [Windows publication handoff](WINDOWS_PUBLICATION_HANDOFF.md). This source has **not** been deployed to the development Firebase project.
+Reports & Export has readiness, Publish/Retry, staged progress, current revision and local-unpublished-change status for an authorized Manager/Administrator. Readiness checks the Company-scoped projection, schema-2 plan, capability/role, cloud Company context and locally recorded SDS SHA-256. Native publication to the development cloud succeeded. This continuation fixed the native SQLite journal connection lifecycle and a post-finalization pointer-read race; the second publication showed the normal success message. See [Windows publication handoff](WINDOWS_PUBLICATION_HANDOFF.md). The backend source remained at deployed SHA `440b1635f00996ec7fc0b7ec6929850b319496d5`; the new Windows client fixes are pending commit/push.
 
 ## Commercial entitlement V1 source checkpoint — local/emulator only
 
@@ -62,7 +62,7 @@ The scalable source checkpoint is preserved at:
 
 `frozen/scalable-publication-proof-2026-09-22`
 
-**Important deployment boundary:** schema 2 is validated in source/emulators but is not yet the coordinated production/dev-cloud deployment. The development Firebase project still has the earlier deployed Functions/rules until schema 2 Functions, indexes, rules, and clients are intentionally deployed together.
+**Historical note:** the schema-2 implementation described in this older section was subsequently deployed to the development Firebase project. Production deployment remains separate.
 
 ## Firebase cloud checkpoint
 
@@ -77,7 +77,7 @@ Verified cloud foundation:
 - Firestore configured in `us-central1`
 - private Cloud Storage bucket
 - FCM enabled
-- ten Node 22 Functions from the earlier backend deployment
+- 23 Node 22 Functions after the schema-2 development deployment (ten were present at the earlier checkpoint)
 - Firestore and Storage Rules deployed
 - cross-service Storage membership authorization configured
 - real Google authentication smoke test passed

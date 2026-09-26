@@ -1,23 +1,51 @@
-# Firebase schema-2 development deployment — September 25, 2026
+# Firebase schema-2 development deployment and live acceptance
 
-Project: `hazcom-navigator-dev` (391606138651), us-central1. No other Firebase project was targeted. The authenticated Firebase CLI identity was `wiiman3893@gmail.com`; the active alias and every deploy command targeted this project explicitly. The working source began at main `4263f1ec3eb29e8d28375ac11a8650bf53c0171f`. The deployment package fix and any subsequent acceptance fixes must be committed and documented with their final SHA before this checkpoint is considered complete.
+Updated September 26, 2026. Project `hazcom-navigator-dev` (391606138651), us-central1. No other Firebase project was targeted. The deployed Functions source is main `440b1635f00996ec7fc0b7ec6929850b319496d5`; this continuation changes only Windows client source/tests and documentation, so no backend redeploy is needed. The coordinated schema-2 Functions, Firestore rules/indexes, and private Storage rules were deployed earlier. The private `@hazcom/core` package was bundled successfully in the deployed Functions artifact.
 
-## Cloud state and deployment
+## Cloud Run invocation audit
 
-Before deployment, the development project had ten legacy callable Functions, legacy Firestore and Storage rules, and the ready `trainingEvents(workerId, createdAt, __name__)` index. The `(default)` Firestore database is Standard/native in us-central1. The private default Storage bucket is `hazcom-navigator-dev.firebasestorage.app`; previous development CORS configuration permits local Tauri development origins for reads. The existing real Google Account retained an active legacy Professional development subscription valid through October 21, 2026. No entitlement or Company records were manually rewritten.
+Every deployed service was inspected on September 26. Each has `invokerIamDisabled=true`, no `allUsers` Run Invoker binding, zero IAM bindings, and completed reconciliation. This permits Firebase SDK HTTPS requests to reach application authentication; it does not grant Firestore/Storage data access. An anonymous `getCompanyCapabilities` request reached the callable handler and returned `401 UNAUTHENTICATED`. The signed-in native Manager subsequently used the backend successfully. No project-wide IAM role was granted.
 
-At approximately 2026-09-26 02:25 UTC, Firestore and Storage rules and the index configuration from current source were deployed. The schema-2 Firestore rules include published staging-plan/verified-attachment read gates; Storage rules include private `revisions-v2` objects. The training-event composite index was confirmed READY. All 23 Functions from source deployed successfully as Node.js 22, second generation, us-central1: `abandonPublication`, `beginPublication`, `beginStagedPublication`, `bootstrapAccount`, `cleanupStagedPublication`, `coverCompany`, `createCompany`, `finalizePublication`, `finalizeStagedPublication`, `getCommercialStatus`, `getCompanyCapabilities`, `getCompanyCoverageStatus`, `getPublicationProgress`, `recordTrainingCompletion`, `sealPublication`, `setActiveCompany`, `setMembership`, `stagePublicationChunk`, `switchDemoType`, `updateCompany`, `uploadPublicationSds`, `uploadStagedSds`, and `validatePublicationPage`. `uploadStagedSds` is HTTPS; the others are callable.
+| Client-facing service | Invoker IAM disabled | Public Run Invoker binding |
+| --- | --- | --- |
+| abandonPublication | yes | none |
+| beginPublication | yes | none |
+| beginStagedPublication | yes | none |
+| bootstrapAccount | yes | none |
+| cleanupStagedPublication (Administrator-gated callable) | yes | none |
+| coverCompany | yes | none |
+| createCompany | yes | none |
+| finalizePublication | yes | none |
+| finalizeStagedPublication | yes | none |
+| getCommercialStatus | yes | none |
+| getCompanyCapabilities | yes | none |
+| getCompanyCoverageStatus | yes | none |
+| getPublicationProgress | yes | none |
+| recordTrainingCompletion | yes | none |
+| sealPublication | yes | none |
+| setActiveCompany | yes | none |
+| setMembership | yes | none |
+| stagePublicationChunk | yes | none |
+| switchDemoType | yes | none |
+| updateCompany | yes | none |
+| uploadPublicationSds (HTTPS request) | yes | none |
+| uploadStagedSds (HTTPS request) | yes | none |
+| validatePublicationPage | yes | none |
 
-The first Functions deployment failed because Cloud Build attempted to download the private local `@hazcom/core` workspace package from npm. Source was corrected to package a built, local core copy inside the Functions artifact. A clean standalone `npm ci --omit=dev` and import of all 24 JavaScript exports passed, then the second Functions deployment completed. The packaged source change remains to be committed to main.
+`cleanupStagedPublication` is not a scheduled/internal endpoint: source requires Firebase identity and Administrator Membership. All other listed exports are callable or HTTPS client endpoints. The read-only audit script is `scripts/dev-invoker.cjs` in the acceptance worktree; it is not needed for normal application operation.
 
-## Validation and current blocker
+## Native real-cloud publication
 
-At the original source SHA, `npm test`, `npm run build`, Functions build, `cargo check`, `npm run test:firebase` (16/16), and the focused schema-2 emulator harness (security/recovery plus small 140-record/20-SDS publish and independent receive) passed. After the package fix, the Functions build and Firebase suite (16/16) passed again. The 5,000-SDS stress case was not run.
+The signed-in native Windows app selected synthetic Company `smoke-19c0423b-64d3-4138-9cf8-89fc162d1f54`, Manager, active Pro coverage. The four identical selector labels are four **different** active synthetic Company IDs with separate Manager Memberships; no selector deduplication or cloud deletion was appropriate.
 
-The actual native Windows app was launched from the canonical checkout. Its existing Google session restored the expected Development Smoke Test Company, Manager role and active Pro coverage without a new browser sign-in. Opening the local authoring workspace then failed with `internal [0]`. Cloud Run logs for `getCompanyCapabilities` show unauthenticated invocation rejection before the Firebase callable handler runs. The new services need an explicit HTTPS invoker setting that permits Firebase SDK requests to reach their handlers; each handler already enforces Google identity, Company membership and entitlements. The permission-setting source edit and redeployment are pending explicit approval after automatic approval review rejected that change as broadening the Cloud Run invocation boundary.
+The selected Company's fixture has 2 Work Areas, 3 Chemical Products, 1 Worker, 2 Work Area Products, 2 Work Area Assignments, 3 SDS Verifications, 2 Training Events, 2 HazCom Reviews, and 3 SDS PDFs. A temporary rename of one hash-verified synthetic SDS caused `Readiness: BLOCKING` and disabled Publish; restoration gave `READY` with 17 records/3 SDS. The first native schema-2 publication staged 9 chunks and 3 PDFs and committed revision 2 `c17fea81-8c4d-45e8-88ea-12ca4ea54c96` at `2026-09-26T11:41:10.584Z`. The native UI initially reported a false post-finalization confirmation error, then reconciled the journal and showed the matching cloud revision. The Windows workflow now retries the current-pointer read after finalization.
 
-No synthetic Company was created, no schema-2 revision was published to the real cloud, and no real-cloud SDS authorization or independent receiver test has passed yet. Do not label the deployment as live accepted or create the frozen live-dev branch until these checks pass. The legacy subscription, Company data, published revisions and frozen branches were left intact. No commercial cleanup ran.
+An ordinary native Work Area description edit displayed “Local changes have not yet been published.” The second native publication completed with the normal success message, committing revision 3 `006f6e79-5646-403b-bf5c-715c8dcf8872` at `2026-09-26T11:54:29.162Z`. Its parent is revision 2. Both revision documents remain `status=published`, `schemaVersion=2`, `validationCursor=chunkCount=9`, and `validatedManifestHash=manifestHash`. The Company pointer is revision 3; each revision reports 17 records and 3 attachments.
 
-## Acceptance still required
+Independent Firestore reads found all eight entity collections with expected counts and three verified attachment documents. A separate read-only development-cloud receiver downloaded the 3 actual GCS SDS objects for each sync, checked their metadata for absent `firebaseStorageDownloadTokens`, verified each byte size/SHA-256 and the revision manifest, and imported revision 2 into a fresh SQLite database. An injected corrupted revision-3 SDS download preserved revision 2; a clean retry atomically activated revision 3, with correct entity counts and a no-op repeat sync. This transport used privileged Firebase CLI OAuth for read-only cloud access, so it proves cloud payload/replica integrity **but does not prove client Firestore/Storage Rules authorization**. Separately, the signed-in native Firebase Storage SDK downloaded a revision-2 SDS with expected 632-byte size and SHA-256 `507dc54dbb5b38d0dae6505893f1faab1f869ab19edc5b888ba8972ff5187403`; unauthenticated Firebase Storage and public GCS URLs both returned 403. The temporary native read probe was removed after the test.
 
-Resolve the endpoint invocation setting with approval, rerun the native app, create or choose a clearly synthetic Company with at least two Work Areas, Products, Worker, relationships, SDS verification, training and review. Verify a safe readiness failure and restoration, publish through the native UI, inspect immutable manifest/chunks/SDS binary and Company pointer, test authorized and denied SDS reads, import into a separate fresh SQLite receiver, verify local-change detection and Demo denial, then commit/push validated source and documentation. Freeze the exact accepted source commit only after successful real-cloud evidence.
+## Validation and remaining acceptance boundary
+
+After the Windows journal and pointer-confirmation fixes: `npm test` passed; `npm run test:firebase` passed 16/16; `npm run test:windows:publication` passed 6/6; `npm run build` and the Functions build passed. `HAZCOM_SCALE_SIZES=small npm run test:scale` passed its schema-2 security/recovery tests and the 140-record/20-SDS emulator publication to a clean replica. The 5,000-SDS stress test was not rerun. No backend source changed after deployment.
+
+Live authenticated **nonmember** SDS denial, live Member publication denial, live Demo publication denial, and live direct privileged-field write denial remain unverified. Their security behavior is covered in emulator tests. A proposed real-cloud write probe was rejected by automatic approval review because it could alter the Company revision pointer or Membership role. Do not describe those as live-cloud passes. Do not create `frozen/firebase-schema2-live-dev-2026-09-25` until the remaining live acceptance gates are satisfied with an approved safe test identity/workflow. No frozen branch has been modified.

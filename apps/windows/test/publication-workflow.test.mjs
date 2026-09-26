@@ -73,6 +73,31 @@ test('SDS missing, changed hash and valid integrity',async()=>{
   const missing={read:async()=>{throw Error('ENOENT');}};
   await assert.rejects(buildPublication(f.sql,f.company.id,missing),/SDS sds-0000.*cannot be read/);
   assert.match(publicationError(Error('SDS sds-0000 cannot be read: ENOENT')),/missing from this computer/);
+  assert.match(publicationError(Error('The system cannot find the file specified. (os error 2)')),/missing from this computer/);
+ }finally{f.sql.close();}
+});
+
+test('Finalization waits for the current Company pointer to become visible',async()=>{
+ const f=await fixture('small','pointer-visibility-fixture');
+ try{
+  const projection=await buildPublication(f.sql,f.company.id,f.files);
+  let published=false,staleReads=1,observations=0,local=null,attempt=null;
+  const revisionId='visibility-revision';
+  const workflow=createPublicationWorkflow({
+   context:async()=>{
+    const visible=published&&staleReads--<=0;
+    if(published)observations++;
+    return {uid:'manager-uid',companyId:f.company.id,companyName:projection.company.name,companyEmail:projection.company.contact_email,role:'manager',canPublish:true,coverageStatus:'active',currentRevisionId:visible?revisionId:null,currentRevisionNumber:visible?1:0,published:visible?{revisionId,revisionNumber:1,publishedAt:'2026-09-25T00:00:00.000Z',recordCounts:{},attachmentCount:projection.attachments.length,fingerprint:null}:null};
+   },
+   projection:async()=>projection,getAttempt:async()=>attempt,setAttempt:async(_c,v)=>{attempt=v;},
+   getPublishedLocal:async()=>local,setPublishedLocal:async(_c,v)=>{local=v;},
+   revisionId:()=>revisionId,
+   publish:async()=>{published=true;return {revisionId,revisionNumber:1};}
+  });
+  const result=await workflow.run(await workflow.check(f.company.id),()=>{});
+  assert.equal(result.revisionId,revisionId);
+  assert.equal(observations,2);
+  assert.equal(local.revisionId,revisionId);
  }finally{f.sql.close();}
 });
 

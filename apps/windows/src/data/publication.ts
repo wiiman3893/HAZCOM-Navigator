@@ -12,16 +12,21 @@ import {buildWindowsPublication} from './database';
 import {createPublicationWorkflow,type Attempt,type PublishedRevision,type Projection} from './publication-workflow';
 
 const managedFiles={read:async(relativePath:string)=>new Uint8Array(await invoke<number[]>('read_publication_sds',{relativePath}))};
-async function withJournal<T>(uid:string,work:(journal:{get:(key:string)=>Promise<any>;put:(key:string,value:unknown)=>Promise<void>})=>Promise<T>):Promise<T>{
- const handle=await Database.load('sqlite:hazcom-publication-journal.db');
- try{
+let journalPromise:Promise<Database>|null=null;
+function openJournal():Promise<Database>{
+ if(!journalPromise)journalPromise=Database.load('sqlite:hazcom-publication-journal.db').then(async handle=>{
   await handle.execute('CREATE TABLE IF NOT EXISTS publication_journal (id TEXT PRIMARY KEY,value TEXT NOT NULL)');
+  return handle;
+ }).catch(error=>{journalPromise=null;throw error;});
+ return journalPromise;
+}
+async function withJournal<T>(uid:string,work:(journal:{get:(key:string)=>Promise<any>;put:(key:string,value:unknown)=>Promise<void>})=>Promise<T>):Promise<T>{
+ const handle=await openJournal();
   const journal={
    async get(key:string){const rows=await handle.select<Array<{value:string}>>('SELECT value FROM publication_journal WHERE id=$1',[uid+'/'+key]);return rows.length?JSON.parse(rows[0].value):null;},
    async put(key:string,value:unknown){await handle.execute('INSERT INTO publication_journal(id,value) VALUES ($1,$2) ON CONFLICT(id) DO UPDATE SET value=excluded.value',[uid+'/'+key,JSON.stringify(value)]);}
   };
   return await work(journal);
- }finally{await handle.close();}
 }
 function currentUid(){const uid=auth.currentUser?.uid;if(!uid)throw Error('Sign in required.');return uid;}
 function transport(){const app=getApp();return firebaseTransport({auth,db,functions:getFunctions(app,'us-central1'),storage:getStorage(app,`gs://${app.options.projectId}.firebasestorage.app`)});}

@@ -22,7 +22,7 @@ export type PublicationDeps={
 export function publicationError(error:unknown):string {
  const message=error instanceof Error?error.message:String(error);
  const code=(error as {code?:string})?.code;
- if(/SDS.*(cannot be read|ENOENT|not found)/i.test(message))return 'An SDS file is missing from this computer. Reattach it before publishing.';
+ if(/SDS.*(cannot be read|ENOENT|not found)|(?:The system cannot find the file specified|os error 2)/i.test(message))return 'An SDS file is missing from this computer. Reattach it before publishing.';
  if(/SDS.*(hash mismatch|size mismatch|changed)|SDS declared size mismatch|Uploaded SDS integrity mismatch/i.test(message))return 'An SDS file changed after it was attached. Reattach or verify it before publishing.';
  if(/stale|older cloud revision|parent.*revision/i.test(message))return 'This publication is based on an older cloud revision. Run the readiness check again.';
  if(/Changed data requires a new revision|Manifest changed/i.test(message))return 'The local draft changed during a prior attempt. Run the readiness check to start a new publication.';
@@ -98,8 +98,14 @@ export function createPublicationWorkflow(deps:PublicationDeps){
    log({companyId:context.companyId,revisionId:attempt.revisionId,stage:'begin',retry:!!ready.attempt,recordCount:projection.metrics.records,attachmentCount:projection.metrics.attachments});
    const result=await deps.publish({projection,revisionId:attempt.revisionId,parentRevisionId:attempt.parentRevisionId,signal,onProgress:p=>{stage=p.phase;onProgress(p);}});
    stage='finalizing';
-   const updated=await deps.context(context.companyId);
-   if(updated.currentRevisionId!==attempt.revisionId||result.revisionId!==attempt.revisionId)throw Error('Published revision could not be confirmed as the current Company revision.');
+   if(result.revisionId!==attempt.revisionId)throw Error('Published revision could not be confirmed as the current Company revision.');
+   let updated=await deps.context(context.companyId);
+   // The finalization reply can arrive before the read path observes the new pointer.
+   for(let retry=0;updated.currentRevisionId!==attempt.revisionId&&retry<4;retry++){
+    await new Promise(resolve=>setTimeout(resolve,200*(retry+1)));
+    updated=await deps.context(context.companyId);
+   }
+   if(updated.currentRevisionId!==attempt.revisionId)throw Error('Published revision could not be confirmed as the current Company revision.');
    const published=updated.published??{revisionId:result.revisionId,revisionNumber:result.revisionNumber,publishedAt:typeof result.publishedAt==='string'?result.publishedAt:null,recordCounts:result.recordCounts??Object.fromEntries(Object.entries(projection.dataset).map(([k,v])=>[k,v.length])),attachmentCount:result.attachmentCount??projection.attachments.length,fingerprint:null};
    const local={...published,fingerprint:projection.fingerprint};
    await deps.setPublishedLocal(context.companyId,local);
