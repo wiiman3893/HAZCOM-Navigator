@@ -25,7 +25,8 @@ export default function BulkSdsImport({service,data,busy,run,onBack}:Props){
  const showPdf=async(read:()=>Promise<Uint8Array>)=>{
   const bytes=await read();
   if(preview)URL.revokeObjectURL(preview);
-  setPreview(URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})));
+  const copy=new Uint8Array(bytes.byteLength);copy.set(bytes);
+  setPreview(URL.createObjectURL(new Blob([copy.buffer],{type:'application/pdf'})));
  };
  const runSplit=(draft:any)=>run(async()=>{
   const value=Number(splitPages[draft.id]??draft.start_page+1);
