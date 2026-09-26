@@ -1,0 +1,27 @@
+name: Bulk SDS Import Validation
+on:
+  push:
+    branches:
+      - dev/bulk-sds-import-m1
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build:authoring
+      - run: node --test packages/authoring/test/bulk-sds-import.test.mjs
+      - run: npm test
+      - run: npm run test:authoring
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:authoring:ui
+      - run: npm run build
+      - name: Rust unit tests
+        working-directory: apps/windows/src-tauri
+        run: cargo test
