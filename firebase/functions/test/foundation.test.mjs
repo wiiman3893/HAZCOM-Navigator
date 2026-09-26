@@ -262,6 +262,36 @@ test('trusted Pro billing events materialize inherited Manager access and seat r
  assert.equal((await db.doc('companies/pro-client-three').get()).exists,false);
 });
 
+test('Pro downgrade with an existing client Administrator removes stale inherited access',async()=>{
+ const {applyTrustedBillingEvent}=await import('../lib/commercial-admin.js');
+ const owner='downgrade-owner',seat='downgrade-seat',admin='downgrade-admin',companyId='downgrade-client';
+ for(const uid of [owner,seat,admin]){
+  await auth.createUser({uid,email:`${uid}@example.com`});
+  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+  await call('bootstrapAccount',uid,{});
+ }
+ const started={id:'downgrade-start',type:'subscription_started',subscriptionId:owner,version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:'pro',cadence:'monthly'}};
+ await applyTrustedBillingEvent(owner,started);
+ await call('createCompany',owner,{companyId,company});
+ await call('setMembership',owner,{companyId,uid:seat,role:'member',active:true});
+ await applyTrustedBillingEvent(owner,{...started,id:'downgrade-seat-add',version:2,type:'seat_added',payload:{uid:seat}});
+ await db.doc(`companies/${companyId}/memberships/${admin}`).set({uid:admin,companyId,role:'administrator',active:true,workerId:null});
+ await db.doc(`accounts/${admin}/memberships/${companyId}`).set({uid:admin,companyId,role:'administrator',active:true,workerId:null});
+ await db.doc(`companies/${companyId}`).update({administratorCount:1});
+ assert.equal((await db.doc(`companies/${companyId}/memberships/${owner}`).get()).get('proTeamSubscriptionId'),owner);
+ const paidThrough=(await db.doc(`subscriptions/${owner}`).get()).get('paidThrough');
+ await applyTrustedBillingEvent(owner,{...started,id:'downgrade-schedule',version:3,type:'subscription_downgrade_scheduled',payload:{tierId:'company',retainedCompanyId:companyId}});
+ await applyTrustedBillingEvent(owner,{...started,id:'downgrade-renew',version:4,type:'subscription_renewed',effectiveAt:paidThrough,payload:{administratorUid:owner}},Date.parse(paidThrough)+1);
+ assert.equal((await db.doc(`companies/${companyId}/memberships/${owner}`).get()).exists,false);
+ assert.equal((await db.doc(`accounts/${owner}/memberships/${companyId}`).get()).exists,false);
+ const directSeat=await db.doc(`companies/${companyId}/memberships/${seat}`).get();
+ assert.equal(directSeat.get('role'),'member');
+ assert.equal(directSeat.get('proTeamSubscriptionId'),undefined);
+ assert.equal((await db.doc(`companies/${companyId}`).get()).get('administratorCount'),1);
+ await assertFails(getDoc(doc(context(owner).firestore(),`companies/${companyId}`)));
+ await assertSucceeds(getDoc(doc(context(admin).firestore(),`companies/${companyId}`)));
+});
+
 test('Pro Demo switch preserves three Companies and parks unselected Companies in Company Demo',async()=>{
  const uid='demo-switch-v1';await auth.createUser({uid,email:`${uid}@example.com`});
  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});

@@ -28,7 +28,8 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
   const adminAccount=retained&&adminUid?await tx.get(db.doc(`accounts/${adminUid}`)):null;
   const downgradeSeats=retained&&state.plan==='pro'&&next.plan==='company'?state.seatIds:[];
   const downgradeMembers=await Promise.all(downgradeSeats.map(uid=>tx.get(db.doc(`companies/${retained}/memberships/${uid}`))));
-  if(retainedCompany&&retainedCompany.get('administratorCount')<1&&(!adminMember?.exists||!adminAccount?.exists))denied('Select an authenticated Company Administrator for paid Company coverage.');
+  const promoteAdmin=!!retainedCompany&&retainedCompany.get('administratorCount')<1;
+  if(promoteAdmin&&(!adminMember?.exists||adminMember.get('active')!==true||!adminAccount?.exists))denied('Select an authenticated Company Administrator for paid Company coverage.');
   const seatAccount=event.type==='seat_added'?await tx.get(db.doc(`accounts/${seatId}`)):null;
   if(event.type==='seat_added'&&!seatAccount?.exists)denied('Pro seat must have an authenticated Account.');
   const members=await Promise.all(related.map(companyId=>tx.get(db.doc(`companies/${companyId}/memberships/${seatId}`))));
@@ -50,12 +51,12 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
   for(let i=0;i<ending.length;i++)if(endingCoverage[i].get('accountId')===accountId)tx.update(endingCoverage[i].ref,{state:'ending',exportEndsAt:new Date(Date.parse(event.effectiveAt)+14*86400000).toISOString(),updatedAt:FieldValue.serverTimestamp()});
   for(let i=0;i<downgradeSeats.length;i++){
    const uid=downgradeSeats[i],member=downgradeMembers[i];
-   if(uid===adminUid||member.get('proTeamSubscriptionId')!==accountId)continue;
+   if((promoteAdmin&&uid===adminUid)||member.get('proTeamSubscriptionId')!==accountId)continue;
    const direct=member.get('directMembership'),memberRef=db.doc(`companies/${retained}/memberships/${uid}`),indexRef=db.doc(`accounts/${uid}/memberships/${retained}`);
    if(direct){const restored={uid,companyId:retained,...direct,updatedAt:FieldValue.serverTimestamp()};tx.set(memberRef,restored);tx.set(indexRef,restored);}
    else {tx.delete(memberRef);tx.delete(indexRef);}
   }
-  if(retainedCompany&&retainedCompany.get('administratorCount')<1&&retained&&adminMember){
+  if(promoteAdmin&&retainedCompany&&retained&&adminMember){
    const administrator={uid:adminUid,companyId:retained,role:'administrator',active:true,workerId:adminMember.get('workerId')??null,updatedAt:FieldValue.serverTimestamp()};
    tx.set(adminMember.ref,administrator);tx.set(db.doc(`accounts/${adminUid}/memberships/${retained}`),administrator);
    tx.update(retainedCompany.ref,{administratorCount:1,updatedAt:FieldValue.serverTimestamp()});
