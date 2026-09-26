@@ -127,5 +127,5 @@ export async function prepareNativeCompanyRestore(packageData){
  await validateCompanyBackup(packageData);
  const {manifest,tables,attachments}=packageData;
  const prepared=tables.dm_attachments.map(row=>({...row,relative_path:`${manifest.companyId}/${row.id}.pdf`}));
- return {companyId:manifest.companyId,statements:restoreStatements(tables,prepared),files:attachments.map(file=>({attachmentId:file.attachmentId,sha256:file.sha256,sizeBytes:file.sizeBytes,bytes:Array.from(decodeBase64(file.base64))}))};
+ return {companyId:manifest.companyId,manifest,statements:restoreStatements(tables,prepared),files:attachments.map(file=>({attachmentId:file.attachmentId,ownerId:file.ownerId,sha256:file.sha256,sizeBytes:file.sizeBytes,bytes:Array.from(decodeBase64(file.base64))}))};
 }

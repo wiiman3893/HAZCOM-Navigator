@@ -37,9 +37,19 @@ Files changed since checkpoint 1: `apps/windows/src-tauri/Cargo.toml`, `Cargo.lo
 
 Validation passed for checkpoint 2: final `npm test` (core, SQLite, sync and authoring, including the v2 `schemaVersion` check), `npm run test:firebase` (16 emulator tests, including new denials), final `npm run build`, `npm run build -w @hazcom/firebase-functions`, `npm run test:diagnostics` (11 tests), and `cargo test --lib` (6 native tests). Tests failing: none in the most recent complete runs.
 
+Checkpoint 2 commit: `aac91c24f58b92c91d6d862c1978976882105e9e`. The task branch was pushed to origin at that commit while `origin/main` remained `30fa9fd2ca6d46d1892259340c165b3e7ff57157`.
+
+## Checkpoint 3 — cross-language native restore proof in progress
+
+- The native restore plan now carries the original validated manifest and SDS owner IDs. Rust independently checks package/schema version, Company identity, attachment count, v2 sorted SDS descriptor hash, per-file bytes, and imported SQLite SDS owner/path/size metadata. The activated directory retains `restore-manifest.json` for future inspection.
+- A deterministic synthetic small-Company JavaScript exporter fixture (`5` Work Areas, `20` Chemical Products, `10` Workers, `20` SDS files) is consumed by a Rust native restore test. The test restored the generated plan through SQLite migration/import and SDS activation, then verified entity counts. Regenerating the fixture twice produced the same SHA-256 (`F0CDC52AAB1A2A3AADEAF659F51510D8DEBB3C2E933F3BF9541411109F0C69FC`).
+- Focused `cargo test backup_restore --lib` passed (2 tests). Final `npm run test:sync` (9 tests), `npm run build`, and `cargo test --lib` (7 native tests) passed for this checkpoint.
+
+Files changed since checkpoint 2: `packages/sync/src/backup.js`, `packages/sync/test/backup.test.mjs`, `apps/windows/src-tauri/src/backup_restore.rs`, new `apps/windows/test/generate-native-restore-fixture.mjs`, new `apps/windows/test/native-restore-plan.json`, and this document.
+
 Known blocker: no external blocker. The native restore is an isolated active directory, but the current authoring UI/database selector does not open it. There is no production-safe cleanup scheduler, production email transport or real billing adapter. The exact post-grace hosted-read cutoff versus membership-based read until physical cleanup is a contract/implementation ambiguity; no rule change was made here.
 
-Exact next action: commit this validated checkpoint on the task branch, push the task branch, then continue with a read-only/open path for restored workspaces or an explicit import-activation UX decision. Do not merge a restored Company into the existing primary DB. Follow with the broader authority/Pro/race matrix and hosted-read cutoff decision before main integration.
+Exact next action: commit/push checkpoint 3, then continue with a read-only/open path for restored workspaces or an explicit import-activation UX decision. Do not merge a restored Company into the existing primary DB. Follow with the broader authority/Pro/race matrix and hosted-read cutoff decision before main integration.
 
 Uncommitted work at this checkpoint: none expected after commit; run `git status --short` to verify.
 

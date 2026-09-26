@@ -42,4 +42,6 @@ The Pro-seat membership document carries `proTeamSubscriptionId` as a derived ac
 
 The native restore is service-only. A restored workspace is not yet selected by the existing Windows authoring UI, and restoration into an existing Company database remains explicitly unsupported. Production billing/webhooks, production email, cloud backup delivery, scheduled cleanup, and real-cloud security denial acceptance remain pending.
 
+A subsequent cross-language fixture proves that a deterministic small Company package produced by the JavaScript backup exporter can be imported by the actual native Rust migration/SQLite/SDS path. The native layer independently verifies the v2 SDS descriptor hash and persists `restore-manifest.json` alongside the activated separate workspace.
+
 The frozen branch `frozen/commercial-entitlement-v1-2026-09-25` records this validated local/emulator foundation. It is not a claim that billing, production email, cloud backup delivery, or cloud cleanup have been deployed. Never repoint this or any earlier frozen branch.

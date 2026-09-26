@@ -24,7 +24,9 @@ test('versioned Company backup restores structured history and SDS into an indep
   assert.equal(backup.manifest.schemaVersion,3);
   const native=await prepareNativeCompanyRestore(backup);
   assert.equal(native.companyId,source.company.id);
+  assert.deepEqual(native.manifest,backup.manifest);
   assert.equal(native.files.length,20);
+  assert.equal(native.files[0].ownerId,backup.attachments[0].ownerId);
   assert.equal(native.statements.filter(row=>row.statement.startsWith('INSERT INTO dm_attachments ')).length,20);
   assert.equal(native.statements.find(row=>row.statement.startsWith('INSERT INTO dm_attachments ')).values.includes(`${source.company.id}/${native.files[0].attachmentId}.pdf`),true);
   const legacy=structuredClone(backup);legacy.manifest.version=1;delete legacy.manifest.attachmentHash;
