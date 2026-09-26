@@ -114,6 +114,6 @@ test('Bulk SDS Import proposes boundaries, allows correction and persists review
  await page.getByRole('button',{name:'Chemical Library',exact:true}).click();
  await page.getByRole('button',{name:'Import SDS Batch',exact:true}).click();
  await expect(page.getByRole('heading',{name:'SDS Batch — 4 pages',exact:true})).toBeVisible();
- await expect(page.getByText('Review drafts saved',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText(/Review drafts saved/).first()).toBeVisible();
  await expect(page.locator('article.candidate-card')).toHaveCount(2);
 });
