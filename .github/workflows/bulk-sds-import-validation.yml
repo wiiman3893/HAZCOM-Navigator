@@ -17,6 +17,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run build:authoring
       - run: node --test packages/authoring/test/bulk-sds-import.test.mjs
+      - run: npm run build -w @hazcom/firebase-functions
       - run: npm test
       - run: npm run test:authoring
       - run: npx playwright install --with-deps chromium
