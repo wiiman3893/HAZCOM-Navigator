@@ -29,7 +29,7 @@ The original Constellation artifacts are retained under `docs/constellation/` an
 2. Run `npm install` from the repository root.
 3. Copy `.env.example` to `.env` and supply the Firebase project values.
 4. Run `npm test` to validate canonical business rules.
-5. Run `npm run dev:windows` for the Windows shell.
+5. Run `npm run tauri -w @hazcom/windows -- dev` to launch the native Windows Tauri app. `npm run dev:windows` starts the browser shell for frontend development.
 6. Run `npm run dev:mobile` for the Capacitor web shell, then `npm run cap:android -w @hazcom/mobile` or `npm run cap:ios -w @hazcom/mobile` after native platform generation.
 
 ## What is already enforced

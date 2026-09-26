@@ -113,6 +113,20 @@ Focused authoring tests cover:
 
 The Windows Playwright harness covers importing an image-only three-page batch, splitting it, merging it, and saving review drafts.
 
+## Schema-4 Windows acceptance (September 26, 2026)
+
+The Tauri startup registers migrations 1–4 with `tauri-plugin-sql` 2.4.1. Its load command builds a SQLx `Migrator` from those specs and calls the SQLite pool's migration runner. SQLx runs each migration and its migration-ledger insert in one transaction (`no_tx=false`). `apps/windows/src-tauri/src/lib.rs` now shares its production migration list with an acceptance test that runs the same SQLx migration engine.
+
+The native acceptance test passed against both a synthetic schema-3 fixture and a temporary copy of the current Windows workspace. Read-only diagnostics first established that the original workspace was schema 3, `integrity_check=ok`, with 2 Work Areas, 3 Chemical Products, 1 Worker, 2 Work Area Products, 2 Assignments, 3 SDS Verifications, 2 HAZCOM Reviews, 2 Training Events, and 3 verified SDS attachments. Only the copy received migration 4. Its Tauri/SQLx ledger advanced from 3 to 4. The test compared every column of every pre-existing SQLite table row before and after migration, excluding only SQLx's migration ledger and the three new import tables; it also explicitly compared SDS attachment identity/path/size/hash tuples. New-table indexes and foreign keys were present, `foreign_key_check` remained empty, `integrity_check` returned `ok`, and reopening with the same migrator was a no-op. A separate forced SQL error confirmed transactional rollback leaves no new tables and keeps the ledger at 3. The original app database remains unchanged at schema 3 pending its next normal native app open.
+
+The `scripts/validate-schema4-copy.mjs` harness then ran the existing authoring service against that migrated copy with a synthetic three-page PDF. It verified Company ownership, source size and SHA-256, three persisted page rows, manual Split Here and Merge With Previous, saved draft state after closing/reopening SQLite, contiguous page coverage `[1,2,3]`, unchanged Chemical Product count, and clean SQLite integrity/foreign keys. The source PDF and all writes were confined to the temporary copy and its temporary attachment directory. The six-test Windows Playwright suite also passed, including the Bulk SDS UI split/merge/save flow. These UI tests use the existing browser harness; no separate visual check of a packaged native app was performed.
+
+Diagnostics read the migrated copy without writing to it and reported source schema 4, applied ledger schema 4, `migrationPending=false`, authoring/publication projection PASS, one imported session in `review_drafts_saved`, and verified original SDS files. In quick mode, the overall result remained WARN because quick mode skips live cloud checks and the task branch had local changes; there was no schema-4 warning.
+
+Reproduce the migrated-copy import check by first making a disposable copy of a schema-3 database and running the native SQLx migration acceptance test against the copy with `HAZCOM_SCHEMA3_FIXTURE_DB=<copy path>`. Then set `HAZCOM_SCHEMA4_COPY_DB=<migrated copy path>` and `HAZCOM_SCHEMA4_COMPANY_ID=<Company ID>` and run `node scripts/validate-schema4-copy.mjs`. That script refuses to write outside the operating-system temporary directory. Never point it at the installed database.
+
+The Windows frontend and optimized native Tauri executable build successfully with `npm run tauri -w @hazcom/windows -- build --no-bundle`. Vite emits its existing advisory that the minified main JavaScript chunk exceeds 500 kB; this does not fail the build. A Windows installer was not produced because neither WiX nor NSIS is installed in the environment. The documented native launch command remains `npm run tauri -w @hazcom/windows -- dev` from the repository root.
+
 ## Known limitations
 
 - No OCR engine yet.

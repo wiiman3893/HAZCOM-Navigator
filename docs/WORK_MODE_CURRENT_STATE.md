@@ -2,6 +2,16 @@
 
 Updated: September 26, 2026. Resume point for the schema-2 development-cloud acceptance task, preserved alongside the [diagnostic toolbox](DIAGNOSTIC_TOOLBOX.md). Use `npm run diagnostics` for a fresh source/cloud/local-state snapshot; the SHA below is the preceding product checkpoint, not a permanent current-main assertion.
 
+## Windows schema-4 acceptance continuation (September 26, 2026)
+
+Current task branch: `work/windows-schema4-acceptance-2026-09-26`, based on current main `1090fe1076470c04cdd88070ecb316fd54da06e0`. The prior schema-2/cloud acceptance below remains historical. This continuation performed only the repository diagnostic's read-only development-cloud audit; it made no Firebase data or configuration changes.
+
+- The original installed Windows workspace was inspected read-only and remains at migration 3 with `integrity_check=ok`, existing authoring relationships and three valid SDS attachments. Migration 4 has **not** been run against the original user database.
+- A temporary database copy, including SQLite sidecars, was upgraded through the same migration specifications and SQLx migration runner registered by Tauri's SQL plugin. The migration ledger advanced 3→4; every row across every pre-existing SQLite table was compared and remained identical, as did SDS attachment identity/path/size/hash tuples. New import indexes and foreign keys were present; SQLite integrity and foreign keys remained clean; reopening was idempotent. A forced migration failure rolled back DDL and ledger changes.
+- Synthetic Bulk SDS import against the migrated Company database copy passed size/hash recording, three-page persistence, split/merge, save/reopen, page coverage, Company scope, and no Product creation. `scripts/validate-schema4-copy.mjs` is a guarded repeatable check that refuses writes outside the OS temporary directory.
+- Diagnostics against the migrated copy observed schema 4/source 4, no pending migration, working authoring/publication projection, and one `review_drafts_saved` import session without modifying the DB. `npm run test:diagnostics` passed 11/11, `npm run test:authoring` passed 14/14, `npm run test:authoring:ui` passed 6/6, and `cargo test --manifest-path apps/windows/src-tauri/Cargo.toml` passed 5/5. `npm run diagnostics:full` passed diagnostic, core, Firebase emulator, Windows publication, app build, and Functions build groups. `npm run tauri -w @hazcom/windows -- build --no-bundle` produced the optimized Windows executable; Vite emitted only its large-chunk advisory. No WiX/NSIS installer tool is installed, so no installer was produced.
+- The original app's current schema 3 is intentionally preserved until the next normal native app open applies migration 4. The live Demo/Member/nonmember SDS/direct privileged-field denial checks remain unverified as directed.
+
 This handoff covers schema-2 acceptance. The newer Bulk SDS Import milestone is documented in [implementation status](IMPLEMENTATION_STATUS.md); diagnostic collection does not alter that feature or migrate local databases.
 
 - Schema-2 native acceptance product checkpoint: `ba0236c866e5cbb8dfc71933d295f0aa559991d3`. Local and remote main matched that exact SHA after its push. Diagnostic tooling follows it without changing the deployed backend.

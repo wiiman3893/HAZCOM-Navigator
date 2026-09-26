@@ -140,12 +140,19 @@ export async function collectSqlite({databaseFile,journalFile,attachmentRoot,com
       userVersion:db.prepare('PRAGMA user_version').get().user_version,migrations,
       schemaVersion,expectedSourceSchemaVersion,migrationPending:expectedSourceSchemaVersion!==null&&schemaVersion!==null&&schemaVersion<expectedSourceSchemaVersion,
       schemaVersionSource:migrations.length?'Tauri migration ledger':'table-presence inference',companySelection:selected,
-      counts:null,trashCounts:null,sdsImportSessions:null,duplicateStableIds:[],duplicateStableIdsSource:'SQLite primary keys and existing dataset normalizer',orphanActiveCount:null};
+      counts:null,trashCounts:null,sdsImportSessions:null,sdsImportSessionStates:null,duplicateStableIds:[],duplicateStableIdsSource:'SQLite primary keys and existing dataset normalizer',orphanActiveCount:null};
     if(sqlite.status==='PASS'&&sqlite.migrationPending)sqlite.status='WARN';
     if(!selected.companyId)return {sqlite,sds:{status:'UNVERIFIED',reason:'Select a Company with --company <id>'},
       authoring:{status:'UNVERIFIED',reason:'Company context ambiguous'},publication:{status:'UNVERIFIED',reason:'Company context ambiguous'}};
     const companyId=selected.companyId,sql=adapter(db);
-    if(knownTables.has('sds_import_session'))sqlite.sdsImportSessions=db.prepare('SELECT COUNT(*) AS count FROM sds_import_session WHERE company_id=?').get(companyId).count;
+    if(knownTables.has('sds_import_session')) {
+      sqlite.sdsImportSessions=db.prepare('SELECT COUNT(*) AS count FROM sds_import_session WHERE company_id=?').get(companyId).count;
+      try {
+        sqlite.sdsImportSessionStates=Object.fromEntries(db.prepare('SELECT status,COUNT(*) AS count FROM sds_import_session WHERE company_id=? GROUP BY status ORDER BY status').all(companyId).map(row=>[row.status,row.count]));
+      } catch(error) {
+        sqlite.sdsImportSessionStates={status:'UNAVAILABLE',reason:safeError(error)};
+      }
+    }
     const local=authoringService({sql,companyId,authorize:async()=>({companyId,active:true,role:'manager'}),files:{}});
     let snapshot,authoring;
     try {

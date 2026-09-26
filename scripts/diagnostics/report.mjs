@@ -99,7 +99,7 @@ export function renderSummary(report) {
     '',
     '## WHAT IS LOCAL ONLY?',
     '',
-    `- SQLite: ${report.sqlite.status}; migration ${report.sqlite.schemaVersion??'unknown'} of source ${report.sqlite.expectedSourceSchemaVersion??'unknown'}; current local records ${json(report.sqlite.counts??{})}; Trash ${json(report.sqlite.trashCounts??{})}; bulk SDS import sessions ${report.sqlite.sdsImportSessions??'not available'}.`,
+    `- SQLite: ${report.sqlite.status}; migration ${report.sqlite.schemaVersion??'unknown'} of source ${report.sqlite.expectedSourceSchemaVersion??'unknown'}; current local records ${json(report.sqlite.counts??{})}; Trash ${json(report.sqlite.trashCounts??{})}; bulk SDS import sessions ${report.sqlite.sdsImportSessions??'not available'} (${json(report.sqlite.sdsImportSessionStates??{})}).`,
     `- Publication projection: ${report.publication.status}; fingerprint ${report.publication.localFingerprint??'UNVERIFIED'}; local changes ${report.publication.localChanges??'UNVERIFIED'}.`,
     `- Publication journal: ${report.publication.journal?.status??'UNVERIFIED'}; pending IDs ${json(report.publication.journal?.pendingAttemptIds??[])}.`,
     '',

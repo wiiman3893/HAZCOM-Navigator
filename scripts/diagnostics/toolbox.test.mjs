@@ -22,6 +22,8 @@ async function fixture({includeMigration4=true}={}) {
   const migration3=await readFile(path.resolve('database/migrations/003_authoring.sql'),'utf8');
   const migration4Sql=await readFile(path.resolve('database/migrations/004_bulk_sds_import.sql'),'utf8');
   const sql=nodeSqlite(databaseFile,REPLICA_SCHEMA_SQL+migration3+(includeMigration4?migration4Sql:''));
+  sql.db.exec('CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY,description TEXT NOT NULL,installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,success BOOLEAN NOT NULL,checksum BLOB NOT NULL,execution_time BIGINT NOT NULL)');
+  for(const version of [1,2,3,...(includeMigration4?[4]:[])])sql.db.prepare('INSERT INTO _sqlx_migrations(version,description,success,checksum,execution_time) VALUES(?,?,1,?,0)').run(version,`fixture_${version}`,Buffer.alloc(48));
   sql.db.prepare('INSERT INTO company(id,name,contact_email) VALUES (?,?,?)').run('company-a','Test Company','test@example.test');
   const files=await nodeFiles(attachmentRoot);
   const author=authoringService({sql,files,companyId:'company-a',authorize:async()=>({companyId:'company-a',role:'manager',active:true}),today:()=> '2026-09-26'});
@@ -79,6 +81,22 @@ test('read-only SQLite collector checks schema, relationships, SDS, and leaves D
   assert.equal(hash(await readFile(f.databaseFile)),before);
   const db=openReadOnlySqlite(f.databaseFile);
   assert.throws(()=>db.exec("INSERT INTO company(id,name,contact_email) VALUES ('bad','Bad','bad@example.test')"));db.close();
+});
+
+test('schema-4 diagnostic reports migrated Bulk SDS session state without modifying the database',async()=>{
+  const f=await fixture(),sessionId='session-a';
+  const db=new DatabaseSync(f.databaseFile);
+  db.prepare('INSERT INTO sds_import_session(id,company_id,source_filename,managed_source_path,source_sha256,source_size_bytes,page_count,imported_at,status) VALUES(?,?,?,?,?,?,?,?,?)')
+    .run(sessionId,'company-a','batch.pdf','company-a/batch.pdf','b'.repeat(64),321,1,'2026-09-26T00:00:00.000Z','review');
+  db.prepare('INSERT INTO sds_import_page(session_id,page_number,text_snippet,has_text,ocr_required,signals_json) VALUES(?,1,\'\',0,1,\'{}\')').run(sessionId);
+  db.prepare('INSERT INTO sds_import_draft(id,session_id,ordinal,start_page,end_page,confidence,reason,status) VALUES(?,?,1,1,1,\'uncertain\',\'Fixture\',\'review\')').run('draft-a',sessionId);
+  db.close();
+  const before=hash(await readFile(f.databaseFile)),result=await collectSqlite(f);
+  assert.equal(result.sqlite.schemaVersion,4);assert.equal(result.sqlite.expectedSourceSchemaVersion,4);
+  assert.equal(result.sqlite.migrationPending,false);assert.equal(result.sqlite.status,'PASS');
+  assert.equal(result.sqlite.sdsImportSessions,1);assert.deepEqual(result.sqlite.sdsImportSessionStates,{review:1});
+  assert.equal(result.authoring.status,'PASS');assert.equal(result.authoring.relationshipValidation.startsWith('PASS'),true);
+  assert.equal(hash(await readFile(f.databaseFile)),before);
 });
 
 test('migration-3 database under migration-4 source remains readable without changing schema',async()=>{
