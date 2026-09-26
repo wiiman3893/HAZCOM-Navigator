@@ -19,6 +19,7 @@ export async function openAuthoring(uid:string,companyId:string){
  await db.execute('INSERT INTO company(id,name,contact_email) VALUES ($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=excluded.name,contact_email=excluded.contact_email',[companyId,access.name,access.contact_email]);
  const files={
   stage:(companyId:string,id:string,bytes:Uint8Array)=>invoke<string>('store_authoring_sds',{companyId,id,bytes:Array.from(bytes)}),
+  stageImport:(companyId:string,id:string,bytes:Uint8Array)=>invoke<string>('store_sds_import_source',{companyId,id,bytes:Array.from(bytes)}),
   read:async(relativePath:string)=>new Uint8Array(await invoke<number[]>('read_publication_sds',{relativePath}))
  };
  return authoringService({companyId,authorize,files,sql:{select:(sql:string,values:unknown[])=>db.select(sql,values),batch:(statements:unknown[])=>invoke('authoring_batch',{statements})}});
