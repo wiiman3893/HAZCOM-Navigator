@@ -1,5 +1,17 @@
 import {test,expect} from '@playwright/test';
 import {dummyPdf} from '../../../packages/sync/test/fixtures.mjs';
+import {PDFDocument,StandardFonts} from 'pdf-lib';
+
+async function bulkPdf(){
+ const doc=await PDFDocument.create(),font=await doc.embedFont(StandardFonts.Helvetica);
+ for(const text of [
+  'SAFETY DATA SHEET\nSECTION 1: IDENTIFICATION\nProduct identifier: UI Product Alpha\nPage 1 of 2',
+  'SECTION 16: OTHER INFORMATION\nPage 2 of 2',
+  'SAFETY DATA SHEET\nSECTION 1: IDENTIFICATION\nProduct identifier: UI Product Beta\nPage 1 of 2',
+  'SECTION 16: OTHER INFORMATION\nPage 2 of 2'
+ ]){const page=doc.addPage([612,792]);page.drawText(text,{x:40,y:740,size:11,font,lineHeight:15});}
+ return Buffer.from(await doc.save({useObjectStreams:false}));
+}
 test('Navigation, form preservation, Work Area CRUD/trash/restore and Company switch',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await expect(page.getByRole('heading',{name:'Management Home',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Work Areas',exact:true}).click();await page.getByRole('button',{name:'Add work area',exact:true}).click();
@@ -67,4 +79,41 @@ test('Publication gives visible Demo and grace reasons',async({page})=>{
   await expect(page.getByText(new RegExp(reason))).toBeVisible();
   await expect(page.getByRole('button',{name:'Publish Company'})).toBeDisabled();
  }
+});
+
+
+test('Bulk SDS Import proposes boundaries, allows correction and persists reviewed drafts',async({page})=>{
+ await page.goto('/');
+ await page.getByRole('button',{name:'Chemical Library',exact:true}).click();
+ await page.getByRole('button',{name:'Import SDS Batch',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Import SDS Batch',exact:true})).toBeVisible();
+ await page.getByLabel('Select batch PDF').setInputFiles({name:'synthetic-stack.pdf',mimeType:'application/pdf',buffer:await bulkPdf()});
+ await expect(page.getByRole('heading',{name:'SDS Batch — 4 pages',exact:true})).toBeVisible();
+ await expect(page.getByText('UI Product Alpha',{exact:true})).toBeVisible();
+ await expect(page.getByText('UI Product Beta',{exact:true})).toBeVisible();
+ await expect(page.getByText('Likely boundary',{exact:true}).first()).toBeVisible();
+
+ let cards=page.locator('article.candidate-card');
+ await expect(cards).toHaveCount(2);
+ await cards.nth(1).getByRole('button',{name:'Merge With Previous',exact:true}).click();
+ await expect(cards).toHaveCount(1);
+ await expect(cards.first().getByText('Pages 1–4',{exact:true})).toBeVisible();
+
+ await cards.first().getByLabel('Split page candidate 1').fill('3');
+ await cards.first().getByRole('button',{name:'Split Here',exact:true}).click();
+ cards=page.locator('article.candidate-card');
+ await expect(cards).toHaveCount(2);
+ await expect(cards.nth(1).getByText('Pages 3–4',{exact:true})).toBeVisible();
+ await expect(cards.nth(1).getByText('Manual boundary',{exact:true})).toBeVisible();
+
+ await page.getByRole('button',{name:'Save review drafts',exact:true}).click();
+ await expect(page.getByRole('button',{name:'View draft PDF',exact:true})).toHaveCount(2,{timeout:15000});
+ await expect(page.getByText(/Review drafts saved/).first()).toBeVisible();
+
+ await page.reload();
+ await page.getByRole('button',{name:'Chemical Library',exact:true}).click();
+ await page.getByRole('button',{name:'Import SDS Batch',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'SDS Batch — 4 pages',exact:true})).toBeVisible();
+ await expect(page.getByText(/Review drafts saved/).first()).toBeVisible();
+ await expect(page.locator('article.candidate-card')).toHaveCount(2);
 });

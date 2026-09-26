@@ -11,7 +11,7 @@ import {publicationPlan} from '../../sync/src/staged.js';
 import {manifest,chunkRows,descriptor,hash} from '../../../firebase/functions/lib/staged-contract.js';
 import {dummyPdf,fixture} from '../../sync/test/fixtures.mjs';
 import {resolveCommercial} from '@hazcom/core';
-const migration=await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8');
+const migration=(await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8'))+(await readFile(new URL('../../../database/migrations/004_bulk_sds_import.sql',import.meta.url),'utf8'));
 const area=n=>({name:`Area ${n}`,location:'Building 1',poc_name:'Safety lead',poc_email:'safety@example.test',poc_phone_number:'+1 (555) 123-4567',description:'Local fixture'});
 const chemical=n=>({product_name:`Cleaner ${n}`,chemical_names:'Acetone',cas_numbers:'67-64-1',manufacturer:'Test manufacturer',sds_date:'2026-01-01'});
 test('Date-only authoring defaults use the local calendar day at the UTC boundary',()=>{
