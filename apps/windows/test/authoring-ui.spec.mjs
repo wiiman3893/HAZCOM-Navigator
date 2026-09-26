@@ -1,5 +1,12 @@
 import {test,expect} from '@playwright/test';
 import {dummyPdf} from '../../../packages/sync/test/fixtures.mjs';
+
+function batchPdf(pages){
+ const objects=['1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj'],kids=[];
+ for(let i=0;i<pages.length;i++){const pageId=3+i*2,contentId=pageId+1;kids.push(pageId+' 0 R');const text=String(pages[i]??'').replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');const stream=text?`BT (${text}) Tj ET`:'q Q';objects.push(`${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /Contents ${contentId} 0 R >>\nendobj`);objects.push(`${contentId} 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj`);}
+ objects.splice(1,0,`2 0 obj\n<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pages.length} >>\nendobj`);
+ return Buffer.from('%PDF-1.4\n'+objects.join('\n')+'\n%%EOF');
+}
 test('Navigation, form preservation, Work Area CRUD/trash/restore and Company switch',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await expect(page.getByRole('heading',{name:'Management Home',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Work Areas',exact:true}).click();await page.getByRole('button',{name:'Add work area',exact:true}).click();
@@ -67,4 +74,13 @@ test('Publication gives visible Demo and grace reasons',async({page})=>{
   await expect(page.getByText(new RegExp(reason))).toBeVisible();
   await expect(page.getByRole('button',{name:'Publish Company'})).toBeDisabled();
  }
+});
+
+test('Bulk SDS batch import remains manually splittable and saves review drafts',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Chemical Library',exact:true}).click();await page.getByRole('button',{name:'Import SDS Batch',exact:true}).click();
+ await page.getByLabel('Import SDS Batch PDF').setInputFiles({name:'scanned-stack.pdf',mimeType:'application/pdf',buffer:batchPdf(['','',''])});
+ await expect(page.getByRole('heading',{name:'SDS Batch — 3 pages'})).toBeVisible();await expect(page.getByText(/3 page\(s\) marked/)).toBeVisible();await expect(page.getByText('OCR REQUIRED · 3 pages')).toBeVisible();
+ const split=page.getByLabel('Split candidate 1 before page');await split.fill('2');await page.getByRole('button',{name:'Split Here'}).click();await expect(page.getByRole('heading',{name:'Candidate 2'})).toBeVisible();await expect(page.getByText('Pages 1–1')).toBeVisible();await expect(page.getByText('Pages 2–3')).toBeVisible();
+ await page.getByRole('button',{name:'Merge With Previous'}).nth(1).click();await expect(page.getByRole('heading',{name:'Candidate 2'})).toHaveCount(0);await expect(page.getByText('Pages 1–3')).toBeVisible();
+ await page.getByRole('button',{name:'Save review drafts'}).click();await expect(page.getByText('Review drafts saved. No Chemical Products were created.')).toBeVisible();
 });
