@@ -8,10 +8,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const schema = readFileSync(resolve(root, 'database/migrations/001_constellation.sql'), 'utf8');
 const derived = readFileSync(resolve(root, 'database/migrations/002_derived_views.sql'), 'utf8');
+const authoring = readFileSync(resolve(root, 'database/migrations/003_authoring.sql'), 'utf8');
+const bulkImport = readFileSync(resolve(root, 'database/migrations/004_bulk_sds_import.sql'), 'utf8');
 const db = new DatabaseSync(':memory:');
 db.exec('PRAGMA foreign_keys = ON;');
 db.exec(schema);
 db.exec(derived);
+db.exec(authoring);
+db.exec(bulkImport);
 
 const run = (sql, ...params) => db.prepare(sql).run(...params);
 run('INSERT INTO company(id,name,contact_email) VALUES(?,?,?)', 'c1', 'Test Co', 'test@example.com');
@@ -37,6 +41,7 @@ run('INSERT INTO training_event__ownership(id,child_id,relationship_id,work_area
 
 assert.equal(db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
 assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+assert.equal(db.prepare("SELECT count(*) n FROM sqlite_master WHERE type='table' AND name IN ('sds_import_session','sds_import_page','sds_import_draft')").get().n,3);
 const review = db.prepare('SELECT latest_hazcom_review_date,next_review_due FROM v_work_area_compliance WHERE work_area_id=?').get('wa1');
 assert.equal(review.latest_hazcom_review_date, '2026-01-15');
 assert.equal(review.next_review_due, '2027-01-15');
