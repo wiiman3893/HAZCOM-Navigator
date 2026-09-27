@@ -1,5 +1,13 @@
 # Commercial lifecycle convergence work resume
 
+## Closure checkpoint 21 — final validation and bounded audits complete
+
+Access-refresh fix is pushed as `8b447521316010bf32013f3c22c8823dc82ded46`. Bounded whole-diff review additionally fixed zero-SDS restore activation and unknown/null subscription read/export elevation under ending coverage. Export now follows authoritative Company capability. The first broad run exposed an intermittent shared Firebase fixture failure; its exact 14-day entitlement used two clock reads. A deterministic 1 ms reproduction proved that fixture could exceed the strict grace limit. One timestamp fixes the fixture without weakening production policy.
+
+Final `diagnostics:full` evidence `diagnostics/output/20260927T223956` passes all six groups: diagnostic tests, npm test (including authoring), Firebase 24/24, Windows publication/lifecycle 12/12, Windows/mobile build and Functions build. Overall WARN is solely the four retained live-security probes. Native all-target tests pass (11 library tests); browser 10/10 and integrated native/Firebase restored publication pass after the fixes. `git diff --check` passes. [Closure report](COMMERCIAL_WORKSPACE_CLOSURE.md) records the bounded commercial/workspace audit, defects, evidence and remaining limitations.
+
+Integration is the next authorized step. No main advance was observed at recovery. The separate old canonical checkout contains unrelated tracked changes and the personal setup script; it must remain untouched. Integrate the clean validated task via a normal fast-forward remote-main push, fetch and verify its exact SHA. No cloud mutation/deployment, frozen branch change or setup modification. Historical checkpoints below retain their original stage descriptions; current state is this closure section.
+
 ## Closure checkpoint 20 — access refresh fixed
 
 Closure started with clean local/remote task `342e2a97911a0d534c7c74f2dfd2a18308095872` and fetched main `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. The interrupted combined tool call executed neither its patch nor tests: automatic review failed because usage was exhausted. There were no partial/uncommitted changes to recover.

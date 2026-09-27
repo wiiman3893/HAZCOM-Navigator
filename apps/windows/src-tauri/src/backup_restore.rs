@@ -185,6 +185,7 @@ pub(crate) async fn restore_to_workspace(root: &Path, workspace_id:String, compa
         let mut descriptor_file=fs::OpenOptions::new().write(true).create_new(true).open(staging.join("restore-files.json")).map_err(|e|e.to_string())?;
         descriptor_file.write_all(&descriptor_bytes).and_then(|_|descriptor_file.sync_all()).map_err(|e|e.to_string())?;
         drop(descriptor_file);
+        fs::create_dir(staging.join("attachments")).map_err(|e|format!("Stage SDS root: {e}"))?;
         for file in &files { stage_file(&staging, &company_id, file).map_err(|e|format!("Stage SDS: {e}"))?; }
         let record_count = stage_database(&staging.join("workspace.db"), &company_id, statements, &files).await.map_err(|e|format!("Stage SQLite: {e}"))?;
         fs::OpenOptions::new().write(true).open(staging.join("workspace.db")).and_then(|file| file.sync_all()).map_err(|e| format!("Sync SQLite: {e}"))?;

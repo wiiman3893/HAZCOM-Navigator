@@ -13,7 +13,7 @@ export async function exportWindowsCompanyBackup(uid:string,companyId:string){
   const access=await verifyCompany(uid,companyId);
   if(access.role==='member'||auth.currentUser?.uid!==uid)throw Error('Company backup requires Manager or Administrator access.');
   const coverage=await call<CoverageStatus>('getCompanyCoverageStatus',{companyId});
-  if(!coverage.capabilities.canExportBackup||coverage.status==='expired')throw Error('Company backup is not available under current coverage.');
+  if(!coverage.capabilities.canExportBackup)throw Error('Company backup is not available under current coverage.');
  };
  await authorize();
  const release=pinWorkspace();

@@ -57,6 +57,12 @@ test('Company coverage gates are shared across active, parked, released and expi
  assert.equal(released.capabilities.canAuthor,false);
  assert.equal(released.capabilities.canExportBackup,true);
  assert.equal(released.capabilities.canReadPublished,true);
+ const ending={state:'ending',exportEndsAt:'2026-10-15T00:00:00Z'};
+ for(const invalid of [undefined,{plan:'unknown'},{...paid,status:'inactive'},{...paid,catalogVersion:'unknown'}]){
+  const denied=resolveCompanyCommercial(invalid,ending,'a',now);assert.equal(denied.capabilities.canReadPublished,false);assert.equal(denied.capabilities.canExportBackup,false);
+ }
+ const expiredOwner=resolveCompanyCommercial({...paid,paidThrough:'2026-09-01T00:00:00Z'},ending,'a',now);
+ assert.equal(expiredOwner.status,'expired');assert.equal(expiredOwner.capabilities.canExportBackup,true);assert.equal(expiredOwner.capabilities.canAuthor,false);
  assert.equal(resolveCompanyCommercial(paid,{state:'ending',exportEndsAt:'2026-10-15T00:00:00Z'},'a',Date.parse('2026-10-15T00:00:00Z')).coverageReason,'COVERAGE_ENDED');
  assert.equal(resolveCompanyCommercial(paid,{state:'ending'},'a',now).capabilities.canExportBackup,false);
  assert.equal(resolveCompanyCommercial({plan:'demo',demoType:'company',selectedDemoCompanyId:'a',coveredCompanyIds:['a','b']},{state:'active'},'b',now).coverageReason,'DEMO_COMPANY_PARKED');

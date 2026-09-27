@@ -90,8 +90,8 @@ export function resolveCompanyCommercial(subscription:Record<string,unknown>|und
  const capabilities={...resolved.capabilities};
  if(coverageReason==='COVERAGE_ENDING'){
   for(const key of ['canPublish','canInviteCompanyMembers','canCreateCompanies','canManageCompanySettings','canUseProTeam','canAuthor'] as const)capabilities[key]=false;
-  capabilities.canReadPublished=resolved.plan!=='demo';
-  capabilities.canExportBackup=resolved.plan!=='demo';
+  capabilities.canReadPublished=resolved.plan==='company'||resolved.plan==='pro';
+  capabilities.canExportBackup=capabilities.canReadPublished;
  } else if(coverageReason){
   for(const key of ['canPublish','canInviteCompanyMembers','canCreateCompanies','canExportBackup','canManageCompanySettings','canUseProTeam','canAuthor','canReadPublished'] as const)capabilities[key]=false;
  }

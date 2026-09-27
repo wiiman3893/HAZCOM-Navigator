@@ -21,6 +21,11 @@ const pdf=new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<< /Type /Page >>\nendobj
 try{
  let primary=await open('primary');
  await primary.sql.batch([{statement:'INSERT INTO company(id,name,contact_email) VALUES (?,?,?)',values:[companyId,'Native round trip','qa@example.test']}]);
+ const empty=await primary.backup();
+ assert.equal(empty.attachments.length,0);
+ await request({op:'restore',id:'empty',plan:await prepareNativeCompanyRestore(empty)});
+ const emptyWorkspace=await open('restored-empty');assert.deepEqual((await emptyWorkspace.backup()).tables,empty.tables);
+ primary=await open('primary');
  const s=primary.service;
  await s.create('work_area',{name:'Mixing',location:'Building A'},'area');
  await s.create('chemical_product',{product_name:'Synthetic cleaner',manufacturer:'Test',sds_date:'2026-09-01'},'product');

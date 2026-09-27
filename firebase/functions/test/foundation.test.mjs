@@ -33,7 +33,8 @@ before(async()=> {
     await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
     await call('bootstrapAccount',uid,{});
   }
-  for (const uid of ['customer','professional']) await db.doc(`subscriptions/${uid}`).set({accountId:uid,plan:uid,status:'active',validUntil:Timestamp.fromMillis(Date.now()+86400000),graceUntil:Timestamp.fromMillis(Date.now()+15*86400000),coveredCompanyCount:0});
+  const entitlementEpoch=Date.now();
+  for (const uid of ['customer','professional']) await db.doc(`subscriptions/${uid}`).set({accountId:uid,plan:uid,status:'active',validUntil:Timestamp.fromMillis(entitlementEpoch+86400000),graceUntil:Timestamp.fromMillis(entitlementEpoch+15*86400000),coveredCompanyCount:0});
 });
 after(async()=>{await env?.cleanup();});
 
@@ -47,7 +48,7 @@ test('real identity required; account bootstrap is idempotent and cannot self-gr
 });
 test('Customer limit is enforced under concurrent creation; retry is idempotent',async()=> {
   const results=await Promise.allSettled(['company-a','company-b'].map(companyId=>call('createCompany','customer',{companyId,company})));
-  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+  assert.equal(results.filter(r=>r.status==='fulfilled').length,1,JSON.stringify(results));
   const companyId=results.find(r=>r.status==='fulfilled').value.companyId;
   // Make the rest of the test independent of which transaction won.
   globalThis.customerCompany=companyId;
