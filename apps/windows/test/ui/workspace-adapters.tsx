@@ -2,12 +2,12 @@ import React,{useEffect,useState} from 'react';
 const params=new URLSearchParams(location.search);
 let active:any=null;
 export const calls:string[]=[];
-(window as any).workspaceTest={calls};
+(window as any).workspaceTest={calls,readOnly:params.has('readonly'),failRefresh:false};
 export const auth={},db={},configurationError='';
 export async function signIn(){} export async function signOutAccount(){} export async function loadAccount(){} export async function call(){}
 const entries=['primary','restored-a','restored-b','restored-broken'].map(workspaceId=>({workspaceId,companyId:'workspace-company',kind:workspaceId==='primary'?'primary':'restored',available:workspaceId!=='restored-broken',reason:workspaceId==='restored-broken'?'WORKSPACE_INTEGRITY_FAILED':null}));
 export async function closeWorkspace(){active=null;}
-export async function ensureWorkspace(){calls.push('ensure');const saved=localStorage.getItem('workspace-test-selection')??'primary';active={lease:{workspaceId:saved==='restored-missing'?'primary':saved,token:crypto.randomUUID(),readOnly:params.has('readonly')}};return {database:active,notice:saved==='restored-missing'?'Saved workspace unavailable; primary opened for this Company.':null};}
+export async function ensureWorkspace(){calls.push('ensure');if((window as any).workspaceTest.failRefresh){active=null;throw Error('Reopen failed safely');}const saved=localStorage.getItem('workspace-test-selection')??'primary';active={lease:{workspaceId:saved==='restored-missing'?'primary':saved,token:crypto.randomUUID(),readOnly:(window as any).workspaceTest.readOnly}};return {database:active,notice:saved==='restored-missing'?'Saved workspace unavailable; primary opened for this Company.':null};}
 export async function listWorkspaces(){return entries;}
 export async function selectWorkspace(_uid:string,_company:string,id:string){calls.push('select:'+id);if(params.has('fail')&&id==='restored-b')throw Error('WORKSPACE_INTEGRITY_FAILED');active={lease:{workspaceId:id,token:crypto.randomUUID(),readOnly:params.has('readonly')}};localStorage.setItem('workspace-test-selection',id);return active;}
 export async function openAuthoring(_uid:string,_company:string,database:any){return database.lease.workspaceId;}

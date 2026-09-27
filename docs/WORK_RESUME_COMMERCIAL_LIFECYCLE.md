@@ -1,5 +1,13 @@
 # Commercial lifecycle convergence work resume
 
+## Closure checkpoint 20 — access refresh fixed
+
+Closure started with clean local/remote task `342e2a97911a0d534c7c74f2dfd2a18308095872` and fetched main `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. The interrupted combined tool call executed neither its patch nor tests: automatic review failed because usage was exhausted. There were no partial/uncommitted changes to recover.
+
+Root cause: the Workspace effect depended only on Company ID/role, and ensureWorkspace returned its cached lease without rechecking the effective mode. Refresh now reruns on refreshed Company context, reauthorizes the existing selection, and closes/invalidate its native session before reopening the same identity when mode changes. Authorization or reopen failure leaves no usable old writable session; the UI clears stale authoring/publication state. A delayed result cannot close a newer selected session. Mode-stable refresh retains its existing token and data.
+
+Focused validation passed: Windows publication/lifecycle 12/12, browser 10/10, native library 11/11, Windows production build. Native tests additionally prove old writable/read-only tokens are rejected across both mode transitions and recovered authoring can write. Browser coverage proves same restore survives authoring → export → authoring and failed reopen hides stale controls. Next: final broad regression, bounded audits, documentation alignment and non-destructive integration. No deployment/cloud mutation; frozen refs and personal setup untouched.
+
 ## Continuation checkpoint 19 — native restored publication acceptance
 
 Recovered clean task HEAD/remote `b09b49460becec7268b5517c4fc41943442b5bad`; fetched main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. Added `npm run test:windows:publication:emulator`: actual JavaScript authoring/backup/projection and publication workflow call disposable Rust SQLite/file/journal sessions and real local Firebase schema-2 Functions. It passes with production upload concurrency, A/B distinct fingerprints, separate attempt journals and SDS roots, interrupted upload/resume with the same ID, lost finalization response reconciliation without duplicates, stale native tokens, primary journal isolation, and both switch/publication exclusion directions. No real Firebase publication occurred.

@@ -1,4 +1,16 @@
 /** Serializes activation and prevents long operations from racing a pending switch. */
+export async function refreshWorkspaceMode<T extends {lease:{token:string;workspaceId:string;readOnly:boolean}}>(selected:T,access:{authorize:()=>Promise<boolean>;currentToken:()=>string|undefined;close:()=>Promise<void>;reopen:(id:string)=>Promise<T>}):Promise<T>{
+ let readOnly:boolean;
+ try{readOnly=await access.authorize();}
+ catch(error){if(access.currentToken()===selected.lease.token)await access.close();throw error;}
+ if(access.currentToken()!==selected.lease.token)throw Error('Workspace access changed.');
+ if(readOnly===selected.lease.readOnly)return selected;
+ // Permission changes are security transitions, not ordinary selection. Close
+ // first so failed authorization/reopen cannot retain a writable native pool.
+ await access.close();
+ return access.reopen(selected.lease.workspaceId);
+}
+
 export class WorkspaceLifecycle {
  private transition:Promise<unknown>=Promise.resolve();
  private pending=0;

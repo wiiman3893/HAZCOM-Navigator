@@ -1,7 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {WorkspaceLifecycle} from '../src/data/workspace-lifecycle.ts';
+import {WorkspaceLifecycle,refreshWorkspaceMode} from '../src/data/workspace-lifecycle.ts';
 const deferred=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve:()=>resolve()};};
+test('coverage refresh closes before reopening the same workspace in either mode and fails closed',async()=>{
+ let current={lease:{token:'initial',workspaceId:'restored-a',readOnly:false}},desired=true,fail=false;const events=[];
+ const access={authorize:async()=>desired,currentToken:()=>current?.lease.token,close:async()=>{events.push('close');current=null;},reopen:async id=>{events.push('reopen:'+id);assert.equal(current,null);if(fail)throw Error('reopen failed');return current={lease:{token:crypto.randomUUID(),workspaceId:id,readOnly:desired}};}};
+ const initial=current;current=await refreshWorkspaceMode(current,access);assert.equal(current.lease.readOnly,true);assert.notEqual(current.lease.token,initial.lease.token);
+ desired=false;current=await refreshWorkspaceMode(current,access);assert.equal(current.lease.readOnly,false);assert.equal(current.lease.workspaceId,'restored-a');
+ assert.deepEqual(events,['close','reopen:restored-a','close','reopen:restored-a']);
+ const unchanged=current;assert.equal(await refreshWorkspaceMode(current,access),unchanged);assert.equal(events.length,4);
+ desired=true;fail=true;await assert.rejects(refreshWorkspaceMode(current,access),/reopen failed/);assert.equal(current,null);
+ current=initial;await assert.rejects(refreshWorkspaceMode(current,{...access,authorize:async()=>{throw Error('access revoked');}}),/access revoked/);assert.equal(current,null);
+});
+test('delayed access refresh cannot close or reopen a newer selected workspace',async()=>{
+ const gate=deferred(),selected={lease:{token:'old',workspaceId:'restored-a',readOnly:false}};let token='old',closed=false;
+ const pending=refreshWorkspaceMode(selected,{authorize:async()=>{await gate.promise;return true;},currentToken:()=>token,close:async()=>{closed=true;},reopen:async()=>{throw Error('unexpected reopen');}});
+ token='new';gate.resolve();await assert.rejects(pending,/Workspace access changed/);assert.equal(closed,false);
+});
 test('duplicate startup effects share one activation while a new auth generation gets its own',async()=>{
  const lifecycle=new WorkspaceLifecycle(),gate=deferred();let calls=0;
  const work=async()=>{calls++;await gate.promise;return calls;};

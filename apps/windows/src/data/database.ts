@@ -3,7 +3,7 @@ import {doc,getDocFromServer} from 'firebase/firestore';
 import { auth,call,db as cloud,verifyCompany, type CompanyAccess } from '../auth/firebase';
 import {verifyWindowsSdsIntegrity} from './publication-integrity';
 import {buildPublication} from '@hazcom/sync';
-import {WorkspaceLifecycle} from './workspace-lifecycle';
+import {WorkspaceLifecycle,refreshWorkspaceMode} from './workspace-lifecycle';
 
 export type WorkspaceLease={workspaceId:string;companyId:string;token:string;readOnly:boolean;selectionWarning?:string|null};
 export type WorkspaceEntry={workspaceId:string;companyId:string;kind:string;available:boolean;reason:string|null};
@@ -44,7 +44,10 @@ export function ensureWorkspace(uid:string,companyId:string):Promise<{database:W
 }
 async function restoreSelection(uid:string,companyId:string):Promise<{database:WorkspaceDatabase;notice:string|null}>{
  await lifecycle.settled();
- if(active&&owner===uid&&active.lease.companyId===companyId)return {database:active,notice:null};
+ if(active&&owner===uid&&active.lease.companyId===companyId){
+  const database=await refreshWorkspaceMode(active,{authorize:()=>authorize(uid,companyId),currentToken:()=>active?.lease.token,close:closeWorkspace,reopen:id=>selectWorkspace(uid,companyId,id)});
+  return {database,notice:database.lease.selectionWarning??null};
+ }
  let remembered:string|null=null,notice:string|null=null;
  try{remembered=await invoke<string|null>('remembered_workspace',{accountId:uid,companyId});}
  catch(error){notice=`Saved workspace preference could not be read; opening the primary workspace for this Company. ${String(error)}`;}

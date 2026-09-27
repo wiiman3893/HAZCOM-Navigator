@@ -84,8 +84,8 @@ export function Workspace({uid,company,error}:{uid:string;company:CompanyAccess;
     void ensureWorkspace(uid,company.id).then(async result=>{
       const items=await listWorkspaces(uid,company.id);if(stopped)return;
       setDatabase(result.database);setPublication(createWindowsPublication(result.database));setEntries(items);setNotice(result.notice??'');
-    }).catch(e=>{if(!stopped)setNotice(message(e));});return()=>{stopped=true;};
-  },[uid,company.id,company.role]);
+    }).catch(e=>{if(!stopped){setDatabase(null);setPublication(null);setNotice(message(e));}});return()=>{stopped=true;};
+  },[uid,company]);
   const open=useCallback(()=>{if(!database)throw Error('Workspace is not open.');return openAuthoring(uid,company.id,database);},[uid,company.id,database]);
   async function select(id:string){
     if(!window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))return;

@@ -18,3 +18,9 @@ test('startup fallback is visible; read/export mode hides authoring and exports 
 test('Member view never opens a local authoring workspace',async({page})=>{
  await page.goto('/workspace.html?role=member');await expect(page.getByRole('heading',{name:'Company member access'})).toBeVisible();expect(await page.evaluate(()=>window.workspaceTest.calls)).toEqual([]);await expect(selector(page)).toHaveCount(0);
 });
+test('access refresh changes mode without changing the restore and failed reopen hides stale authoring',async({page})=>{
+ await page.goto('/workspace.html');await selector(page).selectOption('restored-a');await expect(page.getByTestId('authoring-workspace')).toHaveText('restored-a');
+ await page.getByRole('button',{name:'Refresh changed coverage'}).click();await expect(page.getByRole('heading',{name:'Read and export workspace'})).toBeVisible();await expect(page.getByTestId('authoring-workspace')).toHaveCount(0);await expect(selector(page)).toHaveValue('restored-a');
+ await page.getByRole('button',{name:'Refresh changed coverage'}).click();await expect(page.getByTestId('authoring-workspace')).toHaveText('restored-a');await expect(page.getByRole('heading',{name:'Read and export workspace'})).toHaveCount(0);
+ await page.evaluate(()=>{window.workspaceTest.failRefresh=true;});await page.getByRole('button',{name:'Refresh changed coverage'}).click();await expect(page.getByRole('status')).toHaveText('Reopen failed safely');await expect(page.getByTestId('authoring-workspace')).toHaveCount(0);await expect(selector(page)).toBeDisabled();
+});

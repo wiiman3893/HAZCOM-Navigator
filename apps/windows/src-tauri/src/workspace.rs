@@ -374,18 +374,24 @@ mod tests {
   assert!(read_pdf(&state,b.token.clone(),path).await.is_err());
   assert_eq!(journal(&state,b.token.clone(),"account/attempt".into(),None).await.unwrap(),None);
   let reopened=activate(&state,&config,&data,"account",&company,&a.workspace_id).await.unwrap();
-  assert_eq!(journal(&state,reopened.token,"account/attempt".into(),None).await.unwrap(),Some("restored-attempt".into()));
+  assert_eq!(journal(&state,reopened.token.clone(),"account/attempt".into(),None).await.unwrap(),Some("restored-attempt".into()));
   if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
   let db_path=data.join("restored-workspaces").join(&company).join("active/workspace.db");
   let before=fs::read(&db_path).unwrap();
   let readonly=activate_mode(&state,&config,&data,"account",&company,&a.workspace_id,true).await.unwrap();
   assert!(readonly.read_only);
+  assert_eq!(batch(&state,reopened.token,vec![]).await.unwrap_err(),"WORKSPACE_SESSION_STALE");
   assert!(!select(&state,readonly.token.clone(),"SELECT id FROM work_area".into(),vec![]).await.unwrap().is_empty());
   assert_eq!(batch(&state,readonly.token.clone(),vec![Statement{statement:"UPDATE work_area SET name='Forbidden'".into(),values:vec![]}]).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
   assert_eq!(store_pdf(&state,readonly.token.clone(),company.clone(),"forbidden".into(),pdf,false).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
-  assert_eq!(journal(&state,readonly.token,"account/attempt".into(),Some("forbidden".into())).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
+  assert_eq!(journal(&state,readonly.token.clone(),"account/attempt".into(),Some("forbidden".into())).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
   if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
   assert_eq!(fs::read(&db_path).unwrap(),before);
+  let recovered=activate_mode(&state,&config,&data,"account",&company,&a.workspace_id,false).await.unwrap();
+  assert_eq!(recovered.workspace_id,a.workspace_id);assert!(!recovered.read_only);
+  assert_eq!(select(&state,readonly.token,"SELECT 1".into(),vec![]).await.unwrap_err(),"WORKSPACE_SESSION_STALE");
+  batch(&state,recovered.token,vec![Statement{statement:"UPDATE work_area SET name='Recovered authoring'".into(),values:vec![]}]).await.unwrap();
+  if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
   let resolved=root.canonicalize().unwrap();assert!(resolved.starts_with(std::env::temp_dir().canonicalize().unwrap()));fs::remove_dir_all(resolved).unwrap();
  }
 }
