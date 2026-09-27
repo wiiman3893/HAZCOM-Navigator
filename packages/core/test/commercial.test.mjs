@@ -158,6 +158,10 @@ test('billing lifecycle rejects unsafe transitions and recovers deterministicall
  assert.equal(recovered.paidThrough,'2026-12-18T00:00:00.000Z');
  assert.equal(resolveCommercial(recovered,Date.parse('2026-11-19T00:00:00Z')).status,'active');
  const cancelled=applyBillingEvent(recovered,event('cancel','subscription_cancel_at_period_end',3,'2026-11-20T00:00:00Z'));
+ const failedAgain=applyBillingEvent(failed,event('retry-failed','payment_failed',2,'2026-11-20T00:00:00Z'));
+ assert.equal(failedAgain.paidThrough,failed.paidThrough);assert.equal(failedAgain.graceEndsAt,failed.graceEndsAt);assert.equal(failedAgain.paymentFailureAt,failed.paymentFailureAt);
+ const stillUnpaid=applyBillingEvent(failedAgain,event('late-failed','payment_failed',3,'2026-12-01T00:00:00Z'));
+ assert.equal(resolveCommercial(stillUnpaid,Date.parse('2026-12-01T00:00:00Z')).capabilities.canReadPublished,false);
  assert.throws(()=>applyBillingEvent(cancelled,event('bad-renew','subscription_renewed',4,cancelled.paidThrough)),/Cancelled subscription/);
  assert.throws(()=>applyBillingEvent(base,event('early-downgrade','subscription_downgrade_scheduled',1,base.paidThrough,{tierId:'company',retainedCompanyId:'client'})),/Active Pro term/);
  assert.throws(()=>applyBillingEvent(base,event('immediate-downgrade','subscription_upgrade',1,'2026-10-20T00:00:00Z',{tierId:'company',cadence:'monthly',retainedCompanyId:'client'})),/scheduled downgrade/);

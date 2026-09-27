@@ -4,6 +4,9 @@ import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore';
 
 // Deliberately not exported as a Cloud Function. IAM-authorized operator only.
 const [command, uid, argument, duration = '30'] = process.argv.slice(2);
+// Legacy replacement writes discard commercial state and bypass hosted deadline
+// projection. Refuse before credentials/network; use the audited billing adapter.
+if(command==='entitlement')throw Error('Legacy entitlement replacement is disabled. Use the trusted commercial event adapter with transactional hosted-read deadlines.');
 const projectId = 'hazcom-navigator-dev';
 if (process.env.GOOGLE_CLOUD_PROJECT !== projectId || process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('Set GOOGLE_CLOUD_PROJECT=hazcom-navigator-dev; this utility only targets the real development project.');
 initializeApp({credential:applicationDefault(),projectId});
@@ -30,7 +33,7 @@ if (command === 'entitlement') {
     const company=db.doc(`companies/${argument}`),member=db.doc(`companies/${argument}/memberships/${uid}`);
     const [c,m,account]=await Promise.all([tx.get(company),tx.get(member),tx.get(db.doc(`accounts/${uid}`))]);
     if (!c.exists || c.get('administratorCount') !== 0 || !account.exists) throw new Error('Only bootstrap an existing Company with no administrator and an existing Account.');
-    const record={uid,companyId:argument,active:true,role:'administrator',workerId:m.get('workerId') ?? null,updatedAt:FieldValue.serverTimestamp()};
+    const record={uid,companyId:argument,active:true,role:'administrator',workerId:m.get('workerId') ?? null,hostedReadUntil:m.get('hostedReadUntil')??0,updatedAt:FieldValue.serverTimestamp()};
     tx.set(member,record);tx.set(db.doc(`accounts/${uid}/memberships/${argument}`),record);tx.update(company,{administratorCount:1});
     tx.create(db.collection('administrativeAudit').doc(),{action:'development-first-administrator',uid,companyId:argument,createdAt:FieldValue.serverTimestamp()});
   });

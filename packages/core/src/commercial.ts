@@ -205,8 +205,12 @@ export function applyBillingEvent(state:CommercialState,event:BillingEvent,catal
   if(event.type==='subscription_renewed')next.cancelAtPeriodEnd=false;
  } else if(event.type==='payment_failed'){
   const priorEnd=Date.parse(next.paidThrough??'');if(!Number.isFinite(priorEnd))throw Error('Missing paid term');
-  const graceStart=Math.max(priorEnd,when.getTime());
-  next.paidThrough=new Date(graceStart).toISOString();next.graceEndsAt=new Date(graceStart+GRACE_DAYS*DAY_MS).toISOString();next.paymentFailureAt=event.effectiveAt;
+   // Repeated provider failures for the same unpaid term must not roll the
+   // grace deadline forward. Recovery/start clears the outstanding failure.
+   if(!next.paymentFailureAt){
+    const graceStart=Math.max(priorEnd,when.getTime());
+    next.paidThrough=new Date(graceStart).toISOString();next.graceEndsAt=new Date(graceStart+GRACE_DAYS*DAY_MS).toISOString();next.paymentFailureAt=event.effectiveAt;
+   }
  } else if(event.type==='subscription_cancel_at_period_end'){
   if(current.status!=='active')throw Error('Only an active paid term can be cancelled');
   next.cancelAtPeriodEnd=true;

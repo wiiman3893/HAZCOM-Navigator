@@ -1,5 +1,15 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 16 — recovered interrupted audit work
+
+New continuation started at local/remote task `6c625077c106f32eaf6bf23ed0362be3a6e1f3f6`; freshly fetched main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. Ten uncommitted files were recovered; no staged changes or unpushed commits. The prior combined tool call was stopped by usage exhaustion before either the checkpoint-16 note or Git commit executed. This note reconstructs that missing record; no completed work was recreated.
+
+Recovered changes: three-way release/takeover/seat-removal emulator test; repeated outstanding payment failures no longer roll grace forward; legacy dev-admin entitlement replacement refuses before credentials/network; first-administrator preserves the deadline; obsolete fixed SQLite plugin registration removed; duplicate startup effects share pending activation per Account/Company/generation; two documentation line endings fixed. Prior runs passed Firebase 22/22, core 13/13, Windows publication/lifecycle 10/10, native 11/11 and Windows build. Fresh continuation revalidation has passed core 13/13 plus runner, Windows 10/10/build, native 11/11 and diff check; Firebase revalidation is running. No cloud mutation/deployment or main/frozen/setup changes.
+
+Immediate audit frontier: verify failed-payment → recovery → stale replay and persistence of cleared optional billing fields; then deterministic transition ordering, backup mutation cases, publication isolation, full regression and final review. Restored publication remains blocked and live security checks remain unverified. Do not claim integration readiness.
+
+Fresh Firebase revalidation finished successfully: 22/22. The recovered checkpoint is ready to commit/push; the audit frontier above is subsequent work.
+
 ## Continuation checkpoint 15 — read-only workspace diagnostics and failed-startup recovery
 
 Hosted cutoff checkpoint is pushed as `6f74216`. New read-only workspace inventory reports distinct restore identities, remembered Account/Company preferences, schema/integrity/counts, baseline-manifest integrity, current and historical SDS verification, publication blocking and unavailable selection reasons. It explicitly does not claim to know the in-memory active session or live authoring eligibility. No raw SQLite/SDS is packaged. Diagnostics tests 12/12 prove database/registry hashes unchanged, corrupt SDS detection and no creation of a missing database.

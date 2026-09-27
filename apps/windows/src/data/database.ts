@@ -39,7 +39,10 @@ export async function selectWorkspace(uid:string,companyId:string,workspaceId:st
   active=new WorkspaceDatabase(lease);owner=uid;return active;
  });
 }
-export async function ensureWorkspace(uid:string,companyId:string):Promise<{database:WorkspaceDatabase;notice:string|null}>{
+export function ensureWorkspace(uid:string,companyId:string):Promise<{database:WorkspaceDatabase;notice:string|null}>{
+ return lifecycle.open(uid+'/'+companyId,()=>restoreSelection(uid,companyId));
+}
+async function restoreSelection(uid:string,companyId:string):Promise<{database:WorkspaceDatabase;notice:string|null}>{
  await lifecycle.settled();
  if(active&&owner===uid&&active.lease.companyId===companyId)return {database:active,notice:null};
  let remembered:string|null=null,notice:string|null=null;

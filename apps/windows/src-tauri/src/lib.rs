@@ -36,11 +36,6 @@ pub fn run() {
             workspace::close_workspace,workspace::workspace_select,workspace::workspace_batch,
             workspace::workspace_store_pdf,workspace::workspace_read_pdf,workspace::workspace_journal
         ])
-        .plugin(
-            tauri_plugin_sql::Builder::default()
-                .add_migrations("sqlite:hazcom-navigator.db", migrations())
-                .build(),
-        )
         .run(tauri::generate_context!())
         .expect("error while running HazCom Navigator");
 }

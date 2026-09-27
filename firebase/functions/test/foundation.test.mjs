@@ -530,3 +530,31 @@ test('seat removal after release revokes inherited-only access and preserves dir
  assert.equal((await db.doc(`companies/${ids[1]}/memberships/${seat}`).get()).exists,false);
  assert.equal((await db.doc(`accounts/${seat}/memberships/${ids[1]}`).get()).exists,false);
 });
+
+test('concurrent release, takeover and seat removal converge without stale consultant access or capacity loss',async()=>{
+ const {applyTrustedBillingEvent,releaseProCompany,transferProCompanyToCompany}=await import('../lib/commercial-admin.js');
+ const owner='race-cover-owner',buyer='race-cover-buyer',seat='race-cover-seat',companyId='race-cover-company';
+ for(const uid of [owner,buyer,seat]){
+  await auth.createUser({uid,email:`${uid}@example.com`});
+  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+  await call('bootstrapAccount',uid,{});
+ }
+ const event={subscriptionId:owner,effectiveAt:new Date().toISOString(),source:'mock-billing'};
+ await applyTrustedBillingEvent(owner,{...event,id:'race-start',version:1,type:'subscription_started',payload:{tierId:'pro',cadence:'monthly'}});
+ await applyTrustedBillingEvent(buyer,{...event,subscriptionId:buyer,id:'race-buyer-start',version:1,type:'subscription_started',payload:{tierId:'company',cadence:'monthly'}});
+ await call('createCompany',owner,{companyId,company});
+ await call('setMembership',owner,{companyId,uid:seat,role:'member',active:true});
+ await applyTrustedBillingEvent(owner,{...event,id:'race-add',version:2,type:'seat_added',payload:{uid:seat}});
+ const remove={...event,id:'race-remove',version:3,type:'seat_removed',payload:{uid:seat}};
+ const results=await Promise.allSettled([releaseProCompany(owner,companyId,'race-release'),transferProCompanyToCompany(companyId,buyer,'race-transfer'),applyTrustedBillingEvent(owner,remove)]);
+ assert.equal(results[1].status,'fulfilled'); // Takeover succeeds whether release or transfer commits first.
+ if(results[2].status==='rejected')await applyTrustedBillingEvent(owner,remove);
+ assert.equal((await db.doc(`companies/${companyId}/coverage/current`).get()).get('accountId'),buyer);
+ assert.equal((await db.doc(`subscriptions/${owner}`).get()).get('coveredCompanyCount'),0);
+ assert.equal((await db.doc(`subscriptions/${buyer}`).get()).get('coveredCompanyCount'),1);
+ assert.equal((await db.doc(`companies/${companyId}/memberships/${owner}`).get()).exists,false);
+ const direct=await db.doc(`companies/${companyId}/memberships/${seat}`).get();assert.equal(direct.get('role'),'member');assert.equal(direct.get('proTeamSubscriptionId'),undefined);
+ assert.ok(direct.get('hostedReadUntil')>Date.now());
+ assert.equal((await db.doc(`companies/${companyId}/memberships/${buyer}`).get()).get('role'),'administrator');
+ assert.equal((await transferProCompanyToCompany(companyId,buyer,'race-transfer')).transferred,false);
+});

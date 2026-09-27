@@ -3,7 +3,14 @@ export class WorkspaceLifecycle {
  private transition:Promise<unknown>=Promise.resolve();
  private pending=0;
  private pins=0;
+ private opening=new Map<string,Promise<unknown>>();
  generation=0;
+ open<T>(identity:string,work:()=>Promise<T>):Promise<T>{
+  const key=this.generation+'/'+identity;
+  const pending=this.opening.get(key);if(pending)return pending as Promise<T>;
+  const result=Promise.resolve().then(work).finally(()=>{this.opening.delete(key);});
+  this.opening.set(key,result);return result;
+ }
  async settled(){await this.transition.catch(()=>{});}
  pin(){
   if(this.pending)throw Error('Workspace selection is changing. Try again when it finishes.');

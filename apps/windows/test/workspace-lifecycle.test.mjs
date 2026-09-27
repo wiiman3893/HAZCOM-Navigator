@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {WorkspaceLifecycle} from '../src/data/workspace-lifecycle.ts';
 const deferred=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve:()=>resolve()};};
+test('duplicate startup effects share one activation while a new auth generation gets its own',async()=>{
+ const lifecycle=new WorkspaceLifecycle(),gate=deferred();let calls=0;
+ const work=async()=>{calls++;await gate.promise;return calls;};
+ const first=lifecycle.open('account/company',work),second=lifecycle.open('account/company',work);
+ assert.equal(first,second);await Promise.resolve();assert.equal(calls,1);
+ await lifecycle.close(async()=>{});const fresh=lifecycle.open('account/company',work);assert.notEqual(fresh,first);
+ gate.resolve();await Promise.all([first,second,fresh]);assert.equal(calls,2);
+});
 test('pending native activation excludes backup/publication pins before and during its await',async()=>{
  const lifecycle=new WorkspaceLifecycle(),native=deferred();
  const change=lifecycle.change(()=>native.promise);
