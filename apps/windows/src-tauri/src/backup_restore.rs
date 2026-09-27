@@ -57,7 +57,7 @@ fn allowed_insert(statement: &str) -> bool {
     TABLES.iter().any(|table| statement.starts_with(&format!("INSERT INTO {table} (")))
 }
 
-fn migrator() -> Migrator {
+pub(crate) fn migrator() -> Migrator {
     let migrations = super::migrations().into_iter().map(|migration| {
         SqlxMigration::new(
             migration.version,
@@ -155,7 +155,7 @@ async fn stage_database(path: &Path, company_id: &str, statements: Vec<RestoreSt
     result
 }
 
-async fn restore_to_root(root: &Path, company_id: String, manifest: RestoreManifest, statements: Vec<RestoreStatement>, files: Vec<RestoreFile>) -> Result<RestoreResult, String> {
+pub(crate) async fn restore_to_root(root: &Path, company_id: String, manifest: RestoreManifest, statements: Vec<RestoreStatement>, files: Vec<RestoreFile>) -> Result<RestoreResult, String> {
     if !valid_id(&company_id) || files.len() > 10_000 { return Err("Invalid backup Company or SDS count".into()); }
     verify_manifest(&manifest, &company_id, &files)?;
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
@@ -201,7 +201,7 @@ pub async fn restore_company_backup(app: tauri::AppHandle, company_id: String, m
     restore_to_root(&root, company_id, manifest, statements, files).await
 }
 
-async fn inspect_root(root: &Path, company_id: String) -> Result<RestoreInspection, String> {
+pub(crate) async fn inspect_root(root: &Path, company_id: String) -> Result<RestoreInspection, String> {
     if !valid_id(&company_id) { return Err("Invalid restored Company identity".into()); }
     let root=root.canonicalize().map_err(|e|e.to_string())?;
     let company_root=root.join(&company_id).canonicalize().map_err(|e|e.to_string())?;

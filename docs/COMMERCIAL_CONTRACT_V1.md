@@ -24,6 +24,10 @@ Reducing a tier never deletes over-limit records or append-only history. Existin
 
 ## Backup and authority
 
+### Hosted read deadline (product decision, 2026-09-27)
+
+Hosted Firestore data and Storage SDS reads must stop at the end of the applicable 14-day grace/release window, even when physical cleanup has not run. Recovery or valid replacement coverage may restore access. Local SQLite/SDS data is not deleted by this cutoff. Implementation and emulator proof are required before claiming this policy is enforced; existing deployed rules have not been changed by this decision.
+
 A versioned backup contains Company metadata, all business entities and relationships, SDS bytes, relevant soft-delete/history data, hashes, sizes and schema metadata. It excludes Firebase/OAuth credentials, passwords, private tokens, billing secrets and authorization secrets. Import validates the manifest, paths, relationships, sizes and hashes before activating data. Forward compatibility is best-effort, not a permanent promise.
 
 Only a trusted provider-neutral billing-event adapter may change paid state. Events carry stable IDs, versions, effective times and audit metadata and are idempotent. Client calls cannot synthesize paid entitlements. Firebase Functions enforce cloud actions; Windows authoring enforces local creation limits after authoritative capability resolution; publication is denied for Demo at its trusted entry point. UI notices explain authoritative state but never grant it.

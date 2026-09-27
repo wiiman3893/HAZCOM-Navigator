@@ -2,6 +2,7 @@ mod authoring;
 mod publication_files;
 mod browser_auth;
 mod backup_restore;
+mod workspace;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 fn migrations() -> Vec<Migration> {
@@ -26,6 +27,7 @@ fn migrations() -> Vec<Migration> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(workspace::WorkspaceState::default())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             browser_auth::google_browser_sign_in,
@@ -35,6 +37,9 @@ pub fn run() {
             authoring::authoring_batch,
             backup_restore::restore_company_backup,
             backup_restore::inspect_restored_company_backup
+            ,workspace::activate_workspace,workspace::remembered_workspace,workspace::list_workspaces,
+            workspace::close_workspace,workspace::workspace_select,workspace::workspace_batch,
+            workspace::workspace_store_pdf,workspace::workspace_read_pdf
         ])
         .plugin(
             tauri_plugin_sql::Builder::default()

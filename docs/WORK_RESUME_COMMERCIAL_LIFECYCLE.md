@@ -1,5 +1,15 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 10 — native session foundation (2026-09-27)
+
+Continuation started at task `c6a19e127a8ab70d65b55e2eec974c787215530b`; fetched main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. The user decided hosted reads must stop exactly at the 14-day grace/release deadline; that policy is now recorded in the commercial contract, but Rules implementation remains pending.
+
+New `apps/windows/src-tauri/src/workspace.rs` adds explicit native sessions, token-bound SQL/file commands, transactional per-Account/Company selection persistence in a separate registry database, managed path checks, candidate migration/integrity verification, and switch serialization. Failed preparation preserves the old pool; successful activation closes it and invalidates old tokens. File reads require a matching Company-owned attachment or Bulk SDS import row. Fixed Bulk SDS source retry comparison to use its configured size bound.
+
+Validation: `cargo test --lib` passed 8/8, including a real migrated SQLite primary/restored switch, failed switch preservation, old-pool closure, stale-token rejection, persisted selection, reopening and original-data isolation. An initial test compile error in a MutexGuard borrow was corrected. This foundation is registered natively but the existing frontend still uses its prior routing. Multiple restores per Company, mutable-restored SDS inspection, frontend routing/selection, publication isolation, diagnostics, hosted cutoff and commercial race expansion remain pending. Cloud mutations: NONE.
+
+Next action for this continuation: route frontend database/authoring/file services through the new session, then finish distinct restore identities and editable-workspace integrity. Do not claim the selectable authoring milestone complete. The older next-action section below is historical.
+
 This is an isolated local task branch. It is not deployed and is not on `main`.
 
 - Base and last fetched `origin/main`: `30fa9fd2ca6d46d1892259340c165b3e7ff57157`.

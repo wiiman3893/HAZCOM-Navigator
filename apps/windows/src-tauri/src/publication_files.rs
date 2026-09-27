@@ -31,7 +31,7 @@ pub fn store_sds_import_source(app: tauri::AppHandle, company_id: String, id: St
 fn store_pdf(root: &Path, company: &str, id: &str, bytes: &[u8]) -> Result<String,String> {
     store_pdf_with_limit(root, company, id, bytes, 5 * 1024 * 1024)
 }
-fn store_pdf_with_limit(root: &Path, company: &str, id: &str, bytes: &[u8], max_bytes: usize) -> Result<String,String> {
+pub(crate) fn store_pdf_with_limit(root: &Path, company: &str, id: &str, bytes: &[u8], max_bytes: usize) -> Result<String,String> {
     use std::io::Write;
     for part in [company,id] { if part.is_empty() || part.len()>128 || !part.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_') {return Err("Invalid managed SDS identity".into());} }
     if bytes.len()>max_bytes || !bytes.starts_with(b"%PDF-") {return Err("Invalid SDS PDF or size".into());}
@@ -46,7 +46,7 @@ fn store_pdf_with_limit(root: &Path, company: &str, id: &str, bytes: &[u8], max_
         Err(e) if e.kind()==std::io::ErrorKind::AlreadyExists=>{
             let canonical=target.canonicalize().map_err(|e|e.to_string())?;
             if !canonical.starts_with(&root){return Err("Managed SDS file escapes workspace".into());}
-            let mut old=Vec::new();fs::File::open(canonical).map_err(|e|e.to_string())?.take(5*1024*1024+1).read_to_end(&mut old).map_err(|e|e.to_string())?;
+            let mut old=Vec::new();fs::File::open(canonical).map_err(|e|e.to_string())?.take(max_bytes as u64+1).read_to_end(&mut old).map_err(|e|e.to_string())?;
             if old!=bytes{return Err("Managed SDS ID contains different bytes; choose a new ID".into());}
         },Err(e)=>return Err(e.to_string())
     }
