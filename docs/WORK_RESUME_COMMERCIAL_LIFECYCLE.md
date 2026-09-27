@@ -1,5 +1,13 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 15 — read-only workspace diagnostics and failed-startup recovery
+
+Hosted cutoff checkpoint is pushed as `6f74216`. New read-only workspace inventory reports distinct restore identities, remembered Account/Company preferences, schema/integrity/counts, baseline-manifest integrity, current and historical SDS verification, publication blocking and unavailable selection reasons. It explicitly does not claim to know the in-memory active session or live authoring eligibility. No raw SQLite/SDS is packaged. Diagnostics tests 12/12 prove database/registry hashes unchanged, corrupt SDS detection and no creation of a missing database.
+
+Native adversarial tests reject missing/corrupted DB, missing SDS root, same-size SDS corruption, wrong size, malformed manifest, future schema and missing workspace while keeping the previous session usable. A corrupt preference registry preserves an already-open session on failed switch; on startup only, authorized primary may open with an explicit unsaved-selection warning, leaving registry bytes unchanged. Native suite 11/11 and Windows build pass. Quick diagnostic bundle `diagnostics/output/20260927T121255` contains the new inventory; no local restored workspaces/registry were found, so current in-memory selection stays unverified. Older full report remains evidence for the broad suite, not the later inventory implementation. Main/frozen/personal setup/cloud writes remain untouched.
+
+Next: complete selector/restart frontend acceptance, publication-isolation decision (still blocked), broader lifecycle transfer/concurrency and transaction-size checks, final branch-wide audit and broad validation. Do not integrate main while these uncertainties remain.
+
 ## Continuation checkpoint 14 — emulator hosted cutoff and release races (2026-09-27)
 
 Checkpoint 13 pushed as `b96c0f1`. Added trusted `hostedReadUntil` Membership projections, maintained in the same lifecycle/invitation/coverage/billing transactions. Published Firestore data, training feeds and both Storage layouts deny at/after that absolute deadline; missing fields fail closed. Company/Account/Membership/coverage control records remain readable for expiry/recovery status. No deployment/backfill was performed. A separate authorized rollout must backfill existing Memberships, verify gates/index readiness and assess transaction-size limits for large audiences. Emulator-only backfill rehearsal helper is provided.

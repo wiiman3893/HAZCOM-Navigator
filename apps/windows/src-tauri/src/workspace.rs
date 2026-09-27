@@ -13,7 +13,7 @@ pub struct WorkspaceState(pub Mutex<Option<Session>>);
 pub struct Session { pub lease: Lease, pub pool: SqlitePool, pub files: PathBuf, journal:PathBuf }
 #[derive(Clone, Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct Lease { pub workspace_id:String, pub company_id:String, pub token:String, pub read_only:bool }
+pub struct Lease { pub workspace_id:String, pub company_id:String, pub token:String, pub read_only:bool, pub selection_warning:Option<String> }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub struct Entry { workspace_id:String, company_id:String, kind:String, available:bool, reason:Option<String> }
@@ -69,7 +69,7 @@ async fn prepare(config:&Path,data:&Path,id:&str,company:&str,read_only:bool)->R
   if integrity!="ok"||broken!=0{return Err("WORKSPACE_SQLITE_INVALID".to_string());} Ok(())
  }.await;
  if let Err(e)=result {pool.close().await;return Err(e);}
- Ok(Session{lease:Lease{workspace_id:id.into(),company_id:company.into(),token:format!("{:032x}",rand::random::<u128>()),read_only},pool,files,journal})
+ Ok(Session{lease:Lease{workspace_id:id.into(),company_id:company.into(),token:format!("{:032x}",rand::random::<u128>()),read_only,selection_warning:None},pool,files,journal})
 }
 #[cfg(test)]
 async fn activate(state:&WorkspaceState,config:&Path,data:&Path,account:&str,company:&str,id:&str)->Result<Lease,String>{
@@ -78,13 +78,18 @@ async fn activate(state:&WorkspaceState,config:&Path,data:&Path,account:&str,com
 async fn activate_mode(state:&WorkspaceState,config:&Path,data:&Path,account:&str,company:&str,id:&str,read_only:bool)->Result<Lease,String>{
  if !valid_id(account){return Err("WORKSPACE_ACCOUNT_INVALID".into());}
  let mut guard=state.0.lock().await;
- let next=prepare(config,data,id,company,read_only).await?;
+ let mut next=prepare(config,data,id,company,read_only).await?;
  let saved=async {
   let registry=registry(data).await?;
   let result=sqlx::query("INSERT INTO selections VALUES(?,?,?) ON CONFLICT(account_id,company_id) DO UPDATE SET workspace_id=excluded.workspace_id").bind(account).bind(company).bind(id).execute(&registry).await.map_err(|e|e.to_string());
   registry.close().await;result
  }.await;
- if let Err(e)=saved{next.pool.close().await;return Err(e);}
+ if let Err(e)=saved{
+  if guard.is_some()||id!="primary"{next.pool.close().await;return Err(e);}
+  // A corrupt preference file must not lock the user out of their authorized
+  // primary data. Preserve it for diagnosis; this startup choice is not saved.
+  next.lease.selection_warning=Some(format!("WORKSPACE_SELECTION_NOT_SAVED: {e}"));
+ }
  let lease=next.lease.clone();
  if let Some(old)=guard.replace(next){old.pool.close().await;}
  Ok(lease)
@@ -210,6 +215,43 @@ async fn read_pdf(state:&WorkspaceState,token:String,relative_path:String)->Resu
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[tokio::test]
+ async fn corrupt_inactive_workspaces_and_registry_never_replace_the_active_session(){
+  let root=std::env::temp_dir().join(format!("hazcom-adversarial-{:016x}",rand::random::<u64>()));
+  let config=root.join("config");let data=root.join("data");let restores=data.join("restored-workspaces");let state=WorkspaceState::default();
+  let company="native-restore-proof";
+  let primary=activate(&state,&config,&data,"account",company,"primary").await.unwrap();
+  for fault in ["missing-db","corrupt-db","missing-files","corrupt-sds","wrong-size","manifest","future-schema","missing-workspace"]{
+   let raw:Value=serde_json::from_str(include_str!("../../test/native-restore-plan.json")).unwrap();
+   let first=raw["files"][0]["attachmentId"].as_str().unwrap().to_string();
+   let plan:Plan=serde_json::from_value(raw).unwrap();
+   crate::backup_restore::restore_to_workspace(&restores,fault.into(),plan.company_id,plan.manifest,plan.statements,plan.files).await.unwrap();
+   let active=restores.join(fault).join("active");let db=active.join("workspace.db");
+   let pdf=active.join("attachments").join(company).join(format!("{first}.pdf"));
+   match fault{
+    "missing-db"=>fs::rename(&db,active.join("missing.saved")).unwrap(),
+    "corrupt-db"=>fs::write(&db,b"not a SQLite database").unwrap(),
+    "missing-files"=>fs::rename(active.join("attachments"),active.join("missing-attachments.saved")).unwrap(),
+    "corrupt-sds"=>{let mut bytes=fs::read(&pdf).unwrap();let end=bytes.len()-1;bytes[end]^=1;fs::write(&pdf,bytes).unwrap();},
+    "wrong-size"=>{let mut bytes=fs::read(&pdf).unwrap();bytes.push(0);fs::write(&pdf,bytes).unwrap();},
+    "manifest"=>fs::write(active.join("restore-manifest.json"),b"{}").unwrap(),
+    "future-schema"=>{let pool=SqlitePoolOptions::new().connect_with(SqliteConnectOptions::new().filename(&db)).await.unwrap();sqlx::query("UPDATE _sqlx_migrations SET version=999 WHERE version=4").execute(&pool).await.unwrap();pool.close().await;},
+    "missing-workspace"=>fs::rename(&active,restores.join(fault).join("inactive.saved")).unwrap(),
+    _=>unreachable!()
+   }
+   assert!(activate(&state,&config,&data,"account",company,&format!("restored-{fault}")).await.is_err(),"accepted {fault}");
+   assert_eq!(select(&state,primary.token.clone(),"SELECT 1 AS alive".into(),vec![]).await.unwrap()[0]["alive"],1);
+   if fault=="missing-db"{assert!(!db.exists());}
+  }
+  let registry_path=data.join("workspace-registry.db");let saved=fs::read(&registry_path).unwrap();fs::write(&registry_path,b"broken registry").unwrap();
+  assert!(activate(&state,&config,&data,"account",company,"primary").await.is_err());
+  assert!(select(&state,primary.token.clone(),"SELECT 1".into(),vec![]).await.is_ok());
+  if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
+  let fallback=activate(&state,&config,&data,"account",company,"primary").await.unwrap();assert!(fallback.selection_warning.is_some());
+  assert!(select(&state,fallback.token,"SELECT 1".into(),vec![]).await.is_ok());assert_eq!(fs::read(&registry_path).unwrap(),b"broken registry");fs::write(registry_path,saved).unwrap();
+  if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
+  let resolved=root.canonicalize().unwrap();assert!(resolved.starts_with(std::env::temp_dir().canonicalize().unwrap()));fs::remove_dir_all(resolved).unwrap();
+ }
  #[tokio::test]
  async fn javascript_authoring_and_backup_round_trip_through_native_sessions(){
   use std::io::{BufRead,BufReader,Write};

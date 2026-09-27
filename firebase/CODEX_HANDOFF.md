@@ -1,5 +1,9 @@
 # Codex handoff — Firebase checkpoint
 
+## Undeployed convergence task branch — September 27, 2026
+
+Current continuation is tracked in `docs/WORK_RESUME_COMMERCIAL_LIFECYCLE.md`. Main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`; task source is not deployed. Hosted published content now uses transactionally maintained Membership deadlines in source, with 21 emulator tests passing. Both SDS schemas stop reads at the grace/release deadline independently of cleanup. Existing real Memberships require a separately authorized backfill/index/rules/Functions rollout. Released Pro seat removal and release-to-takeover capacity accounting are fixed. The September 25 paragraph below is historical; later live evidence is documented in `docs/FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md`. No new live acceptance was performed in this continuation.
+
 ## Schema-2 development deployment — native acceptance pending
 
 The September 25, 2026 deployment sent current schema-2 Functions, Firestore rules/indexes and Storage rules to `hazcom-navigator-dev`. A corrected Functions package now installs its local private core dependency in Cloud Build. The real Windows app restored the expected Google Account/Company but authoring hit `internal [0]`; Cloud Run logs show the new capability endpoint rejects invocation before Firebase callable authorization. Approval to set the HTTPS invoker explicitly is pending. No live schema-2 publication, SDS authorization or independent receiving SQLite result may be claimed. See [`docs/FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md`](../docs/FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md). Existing sections below describe earlier checkpoints.

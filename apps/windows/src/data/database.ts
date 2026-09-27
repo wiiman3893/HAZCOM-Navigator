@@ -5,7 +5,7 @@ import {verifyWindowsSdsIntegrity} from './publication-integrity';
 import {buildPublication} from '@hazcom/sync';
 import {WorkspaceLifecycle} from './workspace-lifecycle';
 
-export type WorkspaceLease={workspaceId:string;companyId:string;token:string;readOnly:boolean};
+export type WorkspaceLease={workspaceId:string;companyId:string;token:string;readOnly:boolean;selectionWarning?:string|null};
 export type WorkspaceEntry={workspaceId:string;companyId:string;kind:string;available:boolean;reason:string|null};
 export class WorkspaceDatabase {
  constructor(readonly lease:WorkspaceLease){}
@@ -42,8 +42,10 @@ export async function selectWorkspace(uid:string,companyId:string,workspaceId:st
 export async function ensureWorkspace(uid:string,companyId:string):Promise<{database:WorkspaceDatabase;notice:string|null}>{
  await lifecycle.settled();
  if(active&&owner===uid&&active.lease.companyId===companyId)return {database:active,notice:null};
- const remembered=await invoke<string|null>('remembered_workspace',{accountId:uid,companyId});
- try{return {database:await selectWorkspace(uid,companyId,remembered??'primary'),notice:null};}
+ let remembered:string|null=null,notice:string|null=null;
+ try{remembered=await invoke<string|null>('remembered_workspace',{accountId:uid,companyId});}
+ catch(error){notice=`Saved workspace preference could not be read; opening the primary workspace for this Company. ${String(error)}`;}
+ try{const database=await selectWorkspace(uid,companyId,remembered??'primary');return {database,notice:notice??database.lease.selectionWarning??null};}
  catch(error){
   if(!remembered||remembered==='primary')throw error;
   return {database:await selectWorkspace(uid,companyId,'primary'),notice:`Saved workspace unavailable; primary opened for this Company. ${String(error)}`};

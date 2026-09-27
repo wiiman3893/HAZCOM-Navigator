@@ -19,7 +19,7 @@ export function assertReportSchema(report) {
 
 export function overallStatus(report) {
   const checks=[report.git,report.environment,report.sqlite,report.sds,report.authoring,report.publication,
-    report.firebase,report.tests];
+    report.firebase,report.tests,...(report.workspaces?[report.workspaces]:[])];
   if(checks.some(item=>state(item)==='FAIL'))return 'FAIL';
   if(checks.some(item=>['WARN','UNAVAILABLE','UNVERIFIED','REFUSED'].includes(state(item))))return 'WARN';
   return 'PASS';
@@ -41,7 +41,7 @@ export function likelyNextAction(report) {
 
 export function renderSummary(report) {
   const problems=[],warnings=[];
-  for(const section of ['git','sqlite','sds','authoring','publication','firebase','tests']) {
+  for(const section of ['git','sqlite','sds','authoring','publication','firebase','tests','workspaces']) {
     const value=report[section];if(['FAIL','REFUSED'].includes(state(value)))problems.push(`${section}: ${state(value)}`);
     else if(state(value)==='WARN')warnings.push(`${section}: WARN`);
   }
@@ -68,6 +68,7 @@ export function renderSummary(report) {
     line('Remote main SHA',`${report.git.remoteMain??'UNAVAILABLE'} (${report.git.remoteSource??'unknown source'})`),
     line('Deployed backend source SHA',`${report.handoffEvidence.deployedBackendSource??'UNVERIFIED'} (repository handoff, not deployment fingerprint)`),
     line('Firebase project',report.firebase.project??report.firebaseProject),
+      line('Restored workspaces',report.workspaces?`${report.workspaces.availableRestoredCount}/${report.workspaces.restoredCount} structurally available; active in-memory session unverified; restored publication blocked`:'UNVERIFIED'),
     line('Company',report.sqlite.companySelection?.companyId?`${report.sqlite.companySelection.companyId} (${report.sqlite.companySelection.source})`:'UNVERIFIED'),
     line('Role and coverage',commercial?.status==='PASS'?`${commercial.role??'role unknown'}; ${commercial.plan??'plan unknown'} / ${commercial.commercialStatus}; coverage ${commercial.coverage?.state??'unknown'} (privileged cloud documents)`:'UNVERIFIED'),
     line('Failing checks',problems.length?problems.join('; '):'none reported'),

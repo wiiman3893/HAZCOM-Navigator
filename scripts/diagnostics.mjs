@@ -4,6 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {readFile} from 'node:fs/promises';
 import {collectGit,collectEnvironment,collectLocalLogs,readHandoffEvidence,command} from './diagnostics/local.mjs';
 import {collectSqlite} from './diagnostics/sqlite.mjs';
+import {collectWorkspaces} from './diagnostics/workspaces.mjs';
 import {collectCloud,assertDevProject} from './diagnostics/cloud.mjs';
 import {writeBundle} from './diagnostics/report.mjs';
 import {redactText,safeError} from './diagnostics/redact.mjs';
@@ -52,9 +53,10 @@ export async function collect(options) {
   const appData=path.join(process.env.APPDATA??path.join(process.env.HOME??'', 'AppData','Roaming'),'com.saturnstraw.hazcomnavigator');
   const paths={databaseFile:options.db??path.join(appData,'hazcom-navigator.db'),journalFile:options.journal??path.join(appData,'hazcom-publication-journal.db'),
     attachmentRoot:options.attachments??path.join(appData,'attachments'),companyId:options.company,sourceMigrationDir:path.join(root,'database','migrations')};
-  const [git,environment,local,logs,handoffEvidence]=await Promise.all([
+  const [git,environment,local,logs,handoffEvidence,workspaces]=await Promise.all([
     collectGit(root,{liveRemote:options.mode!=='quick'}),collectEnvironment(root),collectSqlite(paths),
     collectLocalLogs({repoRoot:root,appDataRoot:appData}),readHandoffEvidence(root),
+    collectWorkspaces({appDataRoot:appData,sourceMigrationDir:paths.sourceMigrationDir}),
   ]);
   const companyId=local.sqlite.companySelection?.companyId??null;
   let firebase={status:'UNVERIFIED',project,reason:'Quick mode performs no cloud reads',evidence:'none'};
@@ -75,7 +77,7 @@ export async function collect(options) {
   if(!companyId)knownUnverified.push('Active Company context could not be established from local SQLite/journal');
   if(!firebase.commercial?.role)knownUnverified.push('Authenticated client role and effective commercial capability were not checked');
   const report={diagnosticSchemaVersion:1,generatedAt:new Date().toISOString(),mode:options.mode,firebaseProject:project,
-    overallStatus:'UNVERIFIED',git,environment,firebase,sqlite:local.sqlite,sds:local.sds,authoring:local.authoring,
+    overallStatus:'UNVERIFIED',git,environment,firebase,sqlite:local.sqlite,sds:local.sds,authoring:local.authoring,workspaces,
     entitlement:firebase.commercial??{status:'UNVERIFIED',source:'No authoritative cloud commercial snapshot available'},
     publication:local.publication,tests,logs,handoffEvidence,knownUnverified:[...new Set(knownUnverified)].sort()};
   return report;
