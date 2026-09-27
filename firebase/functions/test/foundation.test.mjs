@@ -253,6 +253,7 @@ test('trusted Pro billing events materialize inherited Manager access and seat r
  await applyTrustedBillingEvent('pro-owner-v1',{...started,id:'renew-company',version:5,type:'subscription_renewed',effectiveAt:paidThrough,payload:{administratorUid:'pro-owner-v1'}},Date.parse(paidThrough)+1);
  assert.equal((await db.doc('subscriptions/pro-owner-v1').get()).get('plan'),'company');
  assert.equal((await db.doc('subscriptions/pro-owner-v1').get()).get('pendingDowngrade'),undefined);
+ assert.equal((await db.doc('subscriptions/pro-owner-v1').get()).get('coveredCompanyCount'),1);
  assert.equal((await db.doc('companies/pro-client-two/memberships/pro-owner-v1').get()).get('role'),'administrator');
  assert.equal((await db.doc('companies/pro-client-three/coverage/current').get()).get('state'),'ending');
  assert.equal((await db.doc('companies/pro-client-three').get()).exists,true);
@@ -582,4 +583,38 @@ test('failed-payment retries preserve the deadline, recovery clears persisted st
  assert.equal((await ref.get()).get('lastVersion'),4);assert.equal((await memberRef.get()).get('hostedReadUntil'),restoredDeadline);
  await applyTrustedBillingEvent(uid,event('payment-new-failure','payment_failed',5,at(-6000)));
  assert.equal((await ref.get()).get('paymentFailureAt'),at(-6000));
+});
+
+test('all release/takeover/seat-removal orderings preserve direct Membership and exact Company capacity',async()=>{
+ const {applyTrustedBillingEvent,releaseProCompany,transferProCompanyToCompany}=await import('../lib/commercial-admin.js');
+ const orders=[['release','takeover','remove'],['release','remove','takeover'],['takeover','release','remove'],['takeover','remove','release'],['remove','release','takeover'],['remove','takeover','release']];
+ for(let i=0;i<orders.length;i++){
+  const owner=`order-owner-${i}`,buyer=`order-buyer-${i}`,seat=`order-seat-${i}`,companyId=`order-company-${i}`;
+  for(const uid of [owner,buyer,seat]){
+   await auth.createUser({uid,email:`${uid}@example.com`});await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});await call('bootstrapAccount',uid,{});
+  }
+  const base={subscriptionId:owner,effectiveAt:new Date().toISOString(),source:'mock-billing'};
+  await applyTrustedBillingEvent(owner,{...base,id:'start',version:1,type:'subscription_started',payload:{tierId:'pro',cadence:'monthly'}});
+  await applyTrustedBillingEvent(buyer,{...base,subscriptionId:buyer,id:'start',version:1,type:'subscription_started',payload:{tierId:'company',cadence:'monthly'}});
+  await call('createCompany',owner,{companyId,company});await call('setMembership',owner,{companyId,uid:seat,role:'member',active:true});
+  await applyTrustedBillingEvent(owner,{...base,id:'add',version:2,type:'seat_added',payload:{uid:seat}});
+  const cancel={...base,id:'cancel',version:3,type:'subscription_cancel_at_period_end',payload:{}};
+  await applyTrustedBillingEvent(owner,cancel);
+  let transferred=false;
+  for(const operation of orders[i]){
+   if(operation==='release'){
+    if(transferred)await assert.rejects(releaseProCompany(owner,companyId,'release'),/not under this Pro/);
+    else await releaseProCompany(owner,companyId,'release');
+   }else if(operation==='takeover'){await transferProCompanyToCompany(companyId,buyer,'takeover');transferred=true;}
+   else await applyTrustedBillingEvent(owner,{...base,id:'remove',version:4,type:'seat_removed',payload:{uid:seat}});
+  }
+  const membership=await db.doc(`companies/${companyId}/memberships/${seat}`).get(),cover=await db.doc(`companies/${companyId}/coverage/current`).get();
+  assert.equal(membership.get('role'),'member');assert.equal(membership.get('proTeamSubscriptionId'),undefined);assert.equal(cover.get('accountId'),buyer);
+  assert.equal((await db.doc(`companies/${companyId}/memberships/${owner}`).get()).exists,false);
+  assert.equal((await db.doc(`subscriptions/${owner}`).get()).get('coveredCompanyCount'),0);
+  assert.equal((await db.doc(`subscriptions/${buyer}`).get()).get('coveredCompanyCount'),1);
+  const deadline=membership.get('hostedReadUntil');assert.ok(deadline>Date.now());
+  assert.equal((await applyTrustedBillingEvent(owner,cancel)).applied,false);
+  assert.equal((await db.doc(`companies/${companyId}/memberships/${seat}`).get()).get('hostedReadUntil'),deadline);
+ }
 });

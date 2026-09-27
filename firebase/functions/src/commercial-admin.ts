@@ -81,7 +81,7 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
    tx.update(retainedCompany.ref,{administratorCount:1,updatedAt:FieldValue.serverTimestamp()});
   }
   writeAudience({subscriptions:{[accountId]:nextData},coverage:endingData,skip,now});
-  tx.update(ref,{...Object.fromEntries(Object.entries(next).filter(([,value])=>value!==undefined)),paymentFailureAt:next.paymentFailureAt??FieldValue.delete(),pendingDowngrade:next.pendingDowngrade??FieldValue.delete(),updatedAt:FieldValue.serverTimestamp()});
+  tx.update(ref,{...Object.fromEntries(Object.entries(next).filter(([,value])=>value!==undefined)),coveredCompanyCount:next.coveredCompanyIds.length,paymentFailureAt:next.paymentFailureAt??FieldValue.delete(),pendingDowngrade:next.pendingDowngrade??FieldValue.delete(),updatedAt:FieldValue.serverTimestamp()});
   tx.create(db.doc(`subscriptions/${accountId}/commercialAudit/${event.id}`),{id:event.id,type:event.type,version:event.version,source:event.source,effectiveAt:event.effectiveAt,createdAt:FieldValue.serverTimestamp()});
   return {applied:true,version:next.lastVersion};
  });

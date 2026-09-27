@@ -49,7 +49,7 @@ async fn prepare(config:&Path,data:&Path,id:&str,company:&str,read_only:bool)->R
  if !valid_id(company){return Err("WORKSPACE_COMPANY_INVALID".into());}
  let (path,files)=if id=="primary" {
   fs::create_dir_all(config).map_err(|e|e.to_string())?;
-  let path=config.join("hazcom-navigator.db");if path.exists(){inside(config,&path)?;}
+  let path=config.join("hazcom-navigator.db");if path.exists()&&inside(config,&path)?!=config.canonicalize().map_err(|e|e.to_string())?.join("hazcom-navigator.db"){return Err("WORKSPACE_DATABASE_ALIAS".into());}
   (path,data.join("attachments"))
  }else{
   let directory=id.strip_prefix("restored-").filter(|id|valid_id(id)).ok_or("WORKSPACE_ID_INVALID")?;
@@ -221,7 +221,7 @@ mod tests {
   let config=root.join("config");let data=root.join("data");let restores=data.join("restored-workspaces");let state=WorkspaceState::default();
   let company="native-restore-proof";
   let primary=activate(&state,&config,&data,"account",company,"primary").await.unwrap();
-  for fault in ["missing-db","corrupt-db","missing-files","corrupt-sds","wrong-size","manifest","future-schema","missing-workspace"]{
+  for fault in ["missing-db","corrupt-db","missing-files","corrupt-sds","wrong-size","oversized-sds","manifest","future-schema","missing-workspace","foreign-key"]{
    let raw:Value=serde_json::from_str(include_str!("../../test/native-restore-plan.json")).unwrap();
    let first=raw["files"][0]["attachmentId"].as_str().unwrap().to_string();
    let plan:Plan=serde_json::from_value(raw).unwrap();
@@ -234,8 +234,10 @@ mod tests {
     "missing-files"=>fs::rename(active.join("attachments"),active.join("missing-attachments.saved")).unwrap(),
     "corrupt-sds"=>{let mut bytes=fs::read(&pdf).unwrap();let end=bytes.len()-1;bytes[end]^=1;fs::write(&pdf,bytes).unwrap();},
     "wrong-size"=>{let mut bytes=fs::read(&pdf).unwrap();bytes.push(0);fs::write(&pdf,bytes).unwrap();},
+    "oversized-sds"=>{fs::OpenOptions::new().write(true).open(&pdf).unwrap().set_len(5*1024*1024+1).unwrap();},
     "manifest"=>fs::write(active.join("restore-manifest.json"),b"{}").unwrap(),
     "future-schema"=>{let pool=SqlitePoolOptions::new().connect_with(SqliteConnectOptions::new().filename(&db)).await.unwrap();sqlx::query("UPDATE _sqlx_migrations SET version=999 WHERE version=4").execute(&pool).await.unwrap();pool.close().await;},
+    "foreign-key"=>{let pool=SqlitePoolOptions::new().connect_with(SqliteConnectOptions::new().filename(&db).foreign_keys(false)).await.unwrap();sqlx::query("UPDATE work_area__ownership SET company_id='missing-company'").execute(&pool).await.unwrap();pool.close().await;},
     "missing-workspace"=>fs::rename(&active,restores.join(fault).join("inactive.saved")).unwrap(),
     _=>unreachable!()
    }

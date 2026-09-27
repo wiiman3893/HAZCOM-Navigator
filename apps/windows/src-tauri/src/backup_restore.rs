@@ -245,13 +245,14 @@ pub(crate) async fn inspect_workspace(root: &Path, workspace_id:&str, company_id
         if saved.len()!=manifest.attachment_count||rows.len()<saved.len() {return Err("Restored SDS count changed".into());}
         let mut descriptors=Vec::with_capacity(rows.len());
         for (attachment_id,owner_type,owner_id,relative_path,size_bytes) in rows {
-            if !valid_id(&attachment_id)||!valid_id(&owner_id)||owner_type!="chemical_product"||size_bytes<0||relative_path!=format!("{company_id}/{attachment_id}.pdf") {return Err("Restored SDS metadata is unsafe".into());}
+            if !valid_id(&attachment_id)||!valid_id(&owner_id)||owner_type!="chemical_product"||!(0..=5*1024*1024).contains(&size_bytes)||relative_path!=format!("{company_id}/{attachment_id}.pdf") {return Err("Restored SDS metadata is unsafe".into());}
             let owner_count:i64=sqlx::query_scalar("SELECT count(*) FROM chemical_product__ownership WHERE child_id=? AND company_id=?")
                 .bind(&owner_id).bind(&company_id).fetch_one(&pool).await.map_err(|e|e.to_string())?;
             if owner_count!=1 {return Err("Restored SDS owner is outside the Company".into());}
             let path=active.join("attachments").join(&company_id).join(format!("{attachment_id}.pdf"));
             let canonical=path.canonicalize().map_err(|e|e.to_string())?;
-            if !canonical.starts_with(&active) {return Err("Restored SDS path escapes managed storage".into());}
+            if canonical!=path {return Err("Restored SDS path alias is unsafe".into());}
+            if fs::metadata(&canonical).map_err(|e|e.to_string())?.len()!=size_bytes as u64 {return Err("Restored SDS size changed".into());}
             let bytes=fs::read(canonical).map_err(|e|e.to_string())?;
             if bytes.len()!=size_bytes as usize||!bytes.starts_with(b"%PDF-") {return Err("Restored SDS size or PDF header changed".into());}
             let sha256=format!("{:x}",Sha256::digest(&bytes));

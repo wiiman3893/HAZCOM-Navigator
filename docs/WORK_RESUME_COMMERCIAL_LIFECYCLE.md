@@ -1,5 +1,11 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 18 — deterministic orderings and filesystem bounds
+
+Checkpoint 17 pushed as `3cba6ac`. Added all six sequential release/takeover/seat-removal permutations alongside the simultaneous race. Each proves direct Member preservation, inherited owner removal, buyer coverage, exact 0/1 Company counts and harmless old cancellation replay. Found and fixed downgrade's stale `coveredCompanyCount`: billing transactions now persist it from the resulting authoritative covered list. Firebase suite passes 24/24, including persisted pending-downgrade removal.
+
+Native activation now rejects primary database path aliases; restored SDS inspection requires its exact managed path and checks recorded size/5 MiB bounds before reading bytes. Added oversized SDS and invalid foreign-key database cases to the failure-preserves-active-session matrix. Native 11/11, existing UI 6/6 and diagnostics 12/12 pass. Diagnostics now accepts legacy v1 manifests without requiring the v2-only schema field and applies the same SDS bounds. No deployment/cloud mutation; main/frozen/setup unchanged. Next: complete publication-isolation determination, frontend selector acceptance, current full regression and remaining whole-diff audit. Restored publication remains blocked pending integrated transport/native acceptance; no main integration claim.
+
 ## Continuation checkpoint 17 — persisted recovery and real backup concurrency
 
 Recovered checkpoint 16 is now pushed as `25b82a2`; main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. Found that reducer-deleted `paymentFailureAt`/`pendingDowngrade` fields were omitted from Firestore update(), leaving stale stored state. The adapter now explicitly deletes cleared fields and removes them from deadline calculation input. Ordered event versions now also reject backward effective timestamps; exact old-ID replays remain no-ops. Core tests pass 13/13 plus runner; Firebase 23/23 includes repeated failure IDs, fixed deadline, persisted recovery, stale-copy rejection and a subsequent legitimate new failure. One core expectation initially failed because the new stale-time guard rejects earlier than the old early-renewal guard; the expected denial was updated and rerun passed.

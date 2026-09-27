@@ -1,4 +1,4 @@
-import {readdir,readFile,realpath} from 'node:fs/promises';
+import {readdir,readFile,realpath,stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {openReadOnlySqlite,collectSqlite} from './sqlite.mjs';
@@ -30,7 +30,7 @@ export async function collectWorkspaces({appDataRoot,sourceMigrationDir}){
    for(const name of ['workspace.db','restore-manifest.json','restore-files.json','attachments'])if(await realpath(path.join(active,name))!==path.join(active,name))throw Error('WORKSPACE_PATH_ALIAS');
    const manifest=JSON.parse(await readFile(path.join(active,'restore-manifest.json'),'utf8'));
    const descriptors=JSON.parse(await readFile(path.join(active,'restore-files.json'),'utf8'));
-   if(manifest.format!=='hazcom-company-backup'||![1,2].includes(manifest.version)||!valid(manifest.companyId)||manifest.schemaVersion!==3||!Array.isArray(descriptors)||descriptors.length!==manifest.attachmentCount)throw Error('RESTORE_MANIFEST_INVALID');
+   if(manifest.format!=='hazcom-company-backup'||![1,2].includes(manifest.version)||!valid(manifest.companyId)||manifest.version===2&&manifest.schemaVersion!==3||!Array.isArray(descriptors)||descriptors.length!==manifest.attachmentCount)throw Error('RESTORE_MANIFEST_INVALID');
    const sorted=descriptors.map(({attachmentId,ownerId,sizeBytes,sha256})=>({attachmentId,ownerId,sizeBytes,sha256})).sort((a,b)=>a.attachmentId.localeCompare(b.attachmentId));
    if(manifest.version===2&&hash(JSON.stringify(sorted))!==manifest.attachmentHash)throw Error('RESTORE_MANIFEST_HASH_MISMATCH');
    entry.companyId=manifest.companyId;
@@ -47,6 +47,7 @@ export async function collectWorkspaces({appDataRoot,sourceMigrationDir}){
      if(row.owner_type!=='chemical_product'||row.company_id!==manifest.companyId||row.relative_path!==`${manifest.companyId}/${row.id}.pdf`)throw Error('WORKSPACE_SDS_OWNERSHIP_INVALID');
      const expectedPath=path.join(active,'attachments',manifest.companyId,`${row.id}.pdf`),actualPath=await realpath(expectedPath);
      if(actualPath!==expectedPath)throw Error('WORKSPACE_SDS_PATH_ALIAS');
+     if(!Number.isSafeInteger(row.size_bytes)||row.size_bytes<0||row.size_bytes>5*1024*1024||(await stat(actualPath)).size!==row.size_bytes)throw Error('WORKSPACE_SDS_INTEGRITY_INVALID');
      const bytes=await readFile(actualPath),baseline=sorted.find(d=>d.attachmentId===row.id);
      if(bytes.length!==row.size_bytes||!bytes.subarray(0,5).equals(Buffer.from('%PDF-'))||hash(bytes)!==(row.sha256??baseline?.sha256)||baseline&&hash(bytes)!==baseline.sha256)throw Error('WORKSPACE_SDS_INTEGRITY_INVALID');
     }
