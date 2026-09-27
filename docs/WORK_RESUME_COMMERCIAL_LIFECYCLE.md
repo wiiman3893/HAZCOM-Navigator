@@ -1,5 +1,15 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 14 — emulator hosted cutoff and release races (2026-09-27)
+
+Checkpoint 13 pushed as `b96c0f1`. Added trusted `hostedReadUntil` Membership projections, maintained in the same lifecycle/invitation/coverage/billing transactions. Published Firestore data, training feeds and both Storage layouts deny at/after that absolute deadline; missing fields fail closed. Company/Account/Membership/coverage control records remain readable for expiry/recovery status. No deployment/backfill was performed. A separate authorized rollout must backfill existing Memberships, verify gates/index readiness and assess transaction-size limits for large audiences. Emulator-only backfill rehearsal helper is provided.
+
+Fixed released Company seat removal: released coverage is no longer in the capacity list, so removal now also queries owned ending coverage (new collection-group index definition). Direct Membership survives with its export cutoff; inherited-only access and Account index are removed. Fixed double decrement when a released Company transfers to paid Company coverage. Cleanup claim also zeros content deadlines transactionally.
+
+Validation: Firebase emulator 21/21, including real request-clock expiry without cleanup for Firestore + schema-1/schema-2 SDS, server exact boundary, missing-gate denial, replacement coverage restoration, concurrent release/seat removal and idempotent replay. Full `diagnostics:full` report `diagnostics/output/20260927T120839`: all six groups PASS (diagnostic tests, npm test, Firebase emulator, Windows publication/lifecycle, app builds, Functions build). Overall WARN includes retained live security gaps, not a failed test. No real cloud writes/deployment, main/frozen/setup unchanged. New diagnostics workspace inventory is in progress separately, not part of this backend proof.
+
+Remaining: finish inventory/tests, deeper native missing/corrupt/schema/path cases and restart fallback, final selector/native acceptance audit, publication remains blocked for restores, fuller coverage-transfer race matrix and final branch-wide review. DO NOT CLAIM milestone merge-ready or deployed cutoff.
+
 ## Continuation checkpoint 13 — switch/export async guards (2026-09-27)
 
 Checkpoint 12 is pushed as `205ccca`. Fixed a race where publication could pin the old workspace after a switch had already entered native activation. `WorkspaceLifecycle` now marks transitions pending synchronously, serializes switches, excludes pins during transitions, rejects switches during pinned operations and allows security shutdown to invalidate pending generations. Backup export also pins the workspace. Added three deterministic race tests to the normal Windows publication test command; all pass. Windows build passes.

@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "coverage",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "trainingEvents",
       "queryScope": "COLLECTION",
       "fields": [

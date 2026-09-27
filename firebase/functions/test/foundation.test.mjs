@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, setLogLevel } from 'firebase/firestore';
 import { ref, getBytes, uploadBytes, deleteObject, listAll } from 'firebase/storage';
-import { Timestamp } from 'firebase-admin/firestore';
+import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST || !process.env.FIREBASE_STORAGE_EMULATOR_HOST) throw new Error('Run using Firebase emulators: never tests against cloud data.');
@@ -463,4 +463,70 @@ test('paid grace preserves published hazard read and backup eligibility while bl
  await assert.rejects(call('setMembership',uid,{companyId,uid:'member',role:'member',active:true}));
  await assert.rejects(call('beginPublication',uid,{companyId,revisionId:'grace-new-revision',parentRevisionId:'grace-revision'}));
  await assert.rejects(call('createCompany',uid,{companyId:'grace-second-company',company}));
+});
+
+test('hosted content and both SDS layouts stop at the release deadline without cleanup; replacement restores reads',async()=>{
+ const {applyTrustedBillingEvent,releaseProCompany,transferProCompanyToCompany}=await import('../lib/commercial-admin.js');
+ const {hostedReadUntil}=await import('../lib/hosted-access.js');
+ const owner='cutoff-pro',buyer='cutoff-buyer',reader='cutoff-member',companyId='cutoff-company';
+ for(const uid of [owner,buyer,reader]){
+  await auth.createUser({uid,email:`${uid}@example.com`});
+  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+  await call('bootstrapAccount',uid,{});
+ }
+ const start=uid=>({id:`${uid}-start`,type:'subscription_started',subscriptionId:uid,version:1,effectiveAt:new Date().toISOString(),source:'mock-billing',payload:{tierId:uid===owner?'pro':'company',cadence:'monthly'}});
+ await applyTrustedBillingEvent(owner,start(owner));await applyTrustedBillingEvent(buyer,start(buyer));
+ await call('createCompany',owner,{companyId,company});
+ await call('setMembership',owner,{companyId,uid:reader,role:'member',active:true});
+ const base=`companies/${companyId}`,digest='a'.repeat(64),bytes=Buffer.from('%PDF-1.4 synthetic cutoff fixture');
+ const paths=[`${base}/revisions/rev-one/sds/file/${digest}.pdf`,`${base}/revisions-v2/rev-two/sds/file/${digest}.pdf`];
+ await db.doc(`${base}/publishedRevisions/rev-one`).set({companyId,status:'published',schemaVersion:1});
+ await db.doc(`${base}/publishedRevisions/rev-one/attachments/file`).set({published:true,sha256:digest});
+ await db.doc(`${base}/publishedRevisions/rev-one/chemicalProducts/product`).set({id:'product',product_name:'Synthetic'});
+ await db.doc(`${base}/publishedRevisions/rev-two`).set({companyId,status:'published',schemaVersion:2,manifestHash:'synthetic-manifest'});
+ await getStorage().bucket().file(paths[0]).save(bytes);
+ await getStorage().bucket().file(paths[1]).save(bytes,{metadata:{metadata:{companyId,revisionId:'rev-two',attachmentId:'file',sha256:digest,manifestHash:'synthetic-manifest'}}});
+ const release=await releaseProCompany(owner,companyId,'cutoff-release',Date.now()-14*86400000+12000);
+ const end=Date.parse(release.exportEndsAt),sub=(await db.doc(`subscriptions/${owner}`).get()).data(),cover=(await db.doc(`${base}/coverage/current`).get()).data();
+ assert.equal(hostedReadUntil(sub,cover,companyId,end-1),end);
+ assert.equal(hostedReadUntil(sub,cover,companyId,end),0);
+ assert.equal((await db.doc(`${base}/memberships/${reader}`).get()).get('hostedReadUntil'),end);
+ const readContent=()=>getDoc(doc(context(reader).firestore(),`${base}/publishedRevisions/rev-one/chemicalProducts/product`));
+ await assertSucceeds(readContent());
+ for(const path of paths)await assertSucceeds(getBytes(ref(context(reader).storage(),path)));
+ await new Promise(resolve=>setTimeout(resolve,Math.max(0,end-Date.now()+100)));
+ await assertFails(readContent());
+ for(const path of paths)await assertFails(getBytes(ref(context(reader).storage(),path)));
+ assert.equal((await db.doc(base).get()).exists,true); // Physical cleanup has not run.
+ assert.equal((await call('getCompanyCoverageStatus',owner,{companyId})).capabilities.canReadPublished,false);
+ await transferProCompanyToCompany(companyId,buyer,'cutoff-replacement');
+ assert.equal((await db.doc(`subscriptions/${owner}`).get()).get('coveredCompanyCount'),0);
+ await assertSucceeds(readContent());
+ for(const path of paths)await assertSucceeds(getBytes(ref(context(reader).storage(),path)));
+ await db.doc(`${base}/memberships/${reader}`).update({hostedReadUntil:FieldValue.delete()});
+ await assertFails(readContent());
+ for(const path of paths)await assertFails(getBytes(ref(context(reader).storage(),path)));
+});
+
+test('seat removal after release revokes inherited-only access and preserves direct Membership with its cutoff',async()=>{
+ const {applyTrustedBillingEvent,releaseProCompany}=await import('../lib/commercial-admin.js');
+ const owner='release-seat-owner',seat='release-seat-user',ids=['release-seat-a','release-seat-b'];
+ for(const uid of [owner,seat]){
+  await auth.createUser({uid,email:`${uid}@example.com`});
+  await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});
+  await call('bootstrapAccount',uid,{});
+ }
+ const event={subscriptionId:owner,effectiveAt:new Date().toISOString(),source:'mock-billing'};
+ await applyTrustedBillingEvent(owner,{...event,id:'release-seat-start',version:1,type:'subscription_started',payload:{tierId:'pro',cadence:'monthly'}});
+ for(const companyId of ids)await call('createCompany',owner,{companyId,company});
+ await call('setMembership',owner,{companyId:ids[0],uid:seat,role:'member',active:true});
+ await applyTrustedBillingEvent(owner,{...event,id:'release-seat-add',version:2,type:'seat_added',payload:{uid:seat}});
+ const release=await releaseProCompany(owner,ids[0],'release-seat-a-event');
+ const remove={...event,id:'release-seat-remove',version:3,type:'seat_removed',payload:{uid:seat}};
+ await Promise.all([releaseProCompany(owner,ids[1],'release-seat-b-event'),applyTrustedBillingEvent(owner,remove)]);
+ assert.equal((await applyTrustedBillingEvent(owner,remove)).applied,false);
+ const direct=await db.doc(`companies/${ids[0]}/memberships/${seat}`).get();
+ assert.equal(direct.get('role'),'member');assert.equal(direct.get('hostedReadUntil'),Date.parse(release.exportEndsAt));
+ assert.equal((await db.doc(`companies/${ids[1]}/memberships/${seat}`).get()).exists,false);
+ assert.equal((await db.doc(`accounts/${seat}/memberships/${ids[1]}`).get()).exists,false);
 });

@@ -112,3 +112,7 @@ Full performance, operation estimates, cleanup tests and known platform/cloud li
 - Evidence: [legacy emulator results](../docs/publication-sync-emulator-results.json), [full scalable results](../docs/scalable-publication-results.json), [supplemental security results](../docs/scalable-publication-security-results.json), [security audit](../docs/SCALABLE_PUBLICATION_SECURITY_AUDIT.json).
 
 The only subsequent edits were documentation and clarification that the legacy local benchmark reports schema 1 limits. No production implementation changed after the successful full-scale run. No cloud deployment or physical mobile runtime validation was performed.
+# Task-branch lifecycle validation — 2026-09-27
+
+Firebase emulator suite passes 21 tests, including expiry of published Firestore content and both SDS layouts while physical data remains, missing deadline denial, replacement coverage restoration, concurrent Pro release/seat removal and duplicate event replay. Trusted deadline projections are source changes only, not deployed. Full non-stress regression also passed in `diagnostics/output/20260927T120839`. Real nonmember/Member/Demo/privileged-write checks remain unverified. Existing Memberships require a separately authorized deadline backfill before any future rules rollout.
+

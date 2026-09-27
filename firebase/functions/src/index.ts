@@ -4,6 +4,7 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { auth, db, identity, membership, coverage, canAuthor, denied } from './access.js';
 import { companyFields, id, object, keys, role, date, fail } from './validation.js';
 import { resolveCommercial, resolveCompanyCommercial, mayCreateWithinLimit } from '@hazcom/core';
+import {hostedReadUntil,hostedAudience} from './hosted-access.js';
 
 setGlobalOptions({ region: 'us-central1', maxInstances: 3, memory: '512MiB', timeoutSeconds: 120 });
 export { beginPublication, uploadPublicationSds, finalizePublication } from './publication.js';
@@ -39,7 +40,8 @@ export const createCompany = onCall(async request => {
     const count = subscription.get('coveredCompanyCount') ?? 0;
     if (!mayCreateWithinLimit(resolved.capabilities.maxCoveredCompanies,count)) denied('Company coverage limit reached.');
     const initialRole = resolved.plan === 'company' || resolved.demoType === 'company' ? 'administrator' : 'manager';
-    const member = { uid, companyId, role: initialRole, active: true, workerId: null, ...(resolved.plan==='pro'||resolved.demoType==='pro'?{proTeamSubscriptionId:uid}:{}),updatedAt: FieldValue.serverTimestamp() };
+    const readUntil=hostedReadUntil({...subscription.data(),coveredCompanyIds:[...(subscription.get('coveredCompanyIds')??[]),companyId],selectedDemoCompanyId:companyId},{accountId:uid},companyId);
+    const member = { uid, companyId, role: initialRole, active: true, workerId: null, hostedReadUntil:readUntil, ...(resolved.plan==='pro'||resolved.demoType==='pro'?{proTeamSubscriptionId:uid}:{}),updatedAt: FieldValue.serverTimestamp() };
     const seatIds:string[]=(resolved.plan==='pro'||resolved.demoType==='pro')?(subscription.get('seatIds')??[uid]):[uid];
     const additionalSeats=seatIds.filter(seatId=>seatId!==uid);
     const seatAccounts=await Promise.all(additionalSeats.map(seatId=>tx.get(db.doc(`accounts/${seatId}`))));
@@ -48,7 +50,7 @@ export const createCompany = onCall(async request => {
     tx.create(db.doc(`companies/${companyId}/coverage/current`), { accountId: uid, updatedAt: FieldValue.serverTimestamp() });
     tx.create(db.doc(`companies/${companyId}/memberships/${uid}`), member);
     tx.create(db.doc(`accounts/${uid}/memberships/${companyId}`), member);
-    for(const seatId of additionalSeats){const inherited={uid:seatId,companyId,role:'manager',active:true,workerId:null,proTeamSubscriptionId:uid,updatedAt:FieldValue.serverTimestamp()};tx.create(db.doc(`companies/${companyId}/memberships/${seatId}`),inherited);tx.create(db.doc(`accounts/${seatId}/memberships/${companyId}`),inherited);}
+    for(const seatId of additionalSeats){const inherited={uid:seatId,companyId,role:'manager',active:true,workerId:null,hostedReadUntil:readUntil,proTeamSubscriptionId:uid,updatedAt:FieldValue.serverTimestamp()};tx.create(db.doc(`companies/${companyId}/memberships/${seatId}`),inherited);tx.create(db.doc(`accounts/${seatId}/memberships/${companyId}`),inherited);}
     tx.update(subscriptionRef, { coveredCompanyCount: count + 1,coveredCompanyIds:FieldValue.arrayUnion(companyId),...(resolved.plan==='demo'&&resolved.demoType==='company'?{selectedDemoCompanyId:companyId}:{}) });
     return { companyId, role: initialRole, created: true };
   });
@@ -66,7 +68,10 @@ export const switchDemoType=onCall(async request=>{
       const coverage=await tx.get(db.doc(`companies/${selected}/coverage/current`));
       if(coverage.get('accountId')!==uid)denied('Selected Company is not covered by this Demo.');
     }
-    tx.update(ref,{demoType:data.demoType,tierId:`demo_${data.demoType}`,selectedDemoCompanyId:data.demoType==='company'?selected:null,updatedAt:FieldValue.serverTimestamp()});
+    const update={demoType:data.demoType,tierId:`demo_${data.demoType}`,selectedDemoCompanyId:data.demoType==='company'?selected:null};
+    const writeAudience=await hostedAudience(tx,snapshot.get('coveredCompanyIds')??[]);
+    writeAudience({subscriptions:{[uid]:{...snapshot.data(),...update}}});
+    tx.update(ref,{...update,updatedAt:FieldValue.serverTimestamp()});
   });
   return {demoType:data.demoType,selectedCompanyId:selected};
 });
@@ -132,6 +137,8 @@ export const setMembership = onCall(async request => {
   await db.runTransaction(async tx => {
     const { company,member:actor } = await membership(tx,uid,companyId,['administrator','manager']);
     const subscription=await coverage(tx,companyId,'canInviteCompanyMembers');
+    const cover=await tx.get(db.doc(`companies/${companyId}/coverage/current`));
+    const readUntil=hostedReadUntil(subscription.data(),cover.data(),companyId);
     const proSeat=actor.get('role')==='manager'&&actor.get('proTeamSubscriptionId')===subscription.get('accountId')&&resolveCommercial(subscription.data()).plan==='pro';
     if(actor.get('role')!=='administrator'&&(!proSeat||targetRole!=='member'))denied('Only an Administrator may manage Company roles.');
     const ref = db.doc(`companies/${companyId}/memberships/${targetUid}`);
@@ -160,7 +167,7 @@ export const setMembership = onCall(async request => {
     const member = inheritedSubscriptionId
       ? {uid:targetUid,companyId,role:direct?.role==='administrator'?'administrator':'manager',active:true,workerId:direct?.workerId??null,proTeamSubscriptionId:inheritedSubscriptionId,directMembership:direct,updatedAt:FieldValue.serverTimestamp()}
       : {uid:targetUid,companyId,role:targetRole,active:data.active,workerId,updatedAt:FieldValue.serverTimestamp()};
-    tx.set(ref,member); tx.set(db.doc(`accounts/${targetUid}/memberships/${companyId}`),member);
+    tx.set(ref,{...member,hostedReadUntil:readUntil}); tx.set(db.doc(`accounts/${targetUid}/memberships/${companyId}`),member);
     tx.update(company.ref,{administratorCount:count});
   });
   return { companyId, uid: targetUid };
@@ -184,13 +191,17 @@ export const coverCompany = onCall(async request => {
     const priorMembers=await Promise.all(seats.map(seatId=>tx.get(db.doc(`companies/${companyId}/memberships/${seatId}`))));
     const seatAccounts=await Promise.all(seats.map(seatId=>tx.get(db.doc(`accounts/${seatId}`))));
     if(seatAccounts.some(account=>!account.exists))denied('Pro seat Account missing.');
+    const coverData={accountId:uid};
+    const subData={...subscription.data(),coveredCompanyIds:[...(subscription.get('coveredCompanyIds')??[]),companyId]};
+    const writeAudience=await hostedAudience(tx,[companyId]);
+    writeAudience({subscriptions:{[uid]:subData},coverage:{[companyId]:coverData},skip:new Set(seats.map(seatId=>`companies/${companyId}/memberships/${seatId}`))});
     tx.create(ref,{accountId:uid,updatedAt:FieldValue.serverTimestamp()});
     if(!company.get('backupEmail'))tx.update(company.ref,{backupEmail:company.get('contact_email'),backupEmailVerified:false});
     for(let i=0;i<seats.length;i++){
       const seatId=seats[i],prior=priorMembers[i];
       const direct=prior.exists?{role:prior.get('role'),active:prior.get('active'),workerId:prior.get('workerId')}:null;
       const inherited={uid:seatId,companyId,role:direct?.role==='administrator'?'administrator':'manager',active:true,workerId:direct?.workerId??null,proTeamSubscriptionId:uid,directMembership:direct,updatedAt:FieldValue.serverTimestamp()};
-      tx.set(db.doc(`companies/${companyId}/memberships/${seatId}`),inherited);
+      tx.set(db.doc(`companies/${companyId}/memberships/${seatId}`),{...inherited,hostedReadUntil:hostedReadUntil(subData,coverData,companyId)});
       tx.set(db.doc(`accounts/${seatId}/memberships/${companyId}`),inherited);
     }
     tx.update(subscription.ref,{coveredCompanyCount:(subscription.get('coveredCompanyCount') ?? 0)+1,coveredCompanyIds:FieldValue.arrayUnion(companyId)});

@@ -2,6 +2,7 @@ import {FieldValue} from 'firebase-admin/firestore';
 import {getStorage} from 'firebase-admin/storage';
 import {applyBillingEvent,resolveCommercial,planCoverageCleanup,type BillingEvent,type CommercialState} from '@hazcom/core';
 import {db,denied} from './access.js';
+import {hostedReadUntil,hostedAudience} from './hosted-access.js';
 
 /** Trusted adapter only: deliberately not exported as a callable Function. */
 export async function applyTrustedBillingEvent(accountId:string,event:BillingEvent,now=Date.now()){
@@ -16,7 +17,10 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
   const next=applyBillingEvent(state,event);
   if(next===state)return {applied:false,version:state.lastVersion};
   const seatId=String(event.payload.uid??'');
-  const related=event.type==='seat_added'||event.type==='seat_removed'?state.coveredCompanyIds:[];
+  // Released Companies leave the subscription capacity list, but inherited seats
+  // still exist during their export window. Removal must revoke those seats too.
+  const released=event.type==='seat_removed'?await tx.get(db.collectionGroup('coverage').where('accountId','==',accountId).where('state','==','ending')):null;
+  const related=event.type==='seat_added'||event.type==='seat_removed'?[...new Set([...state.coveredCompanyIds,...(released?.docs.map(cover=>cover.ref.parent.parent!.id)??[])])]:[];
   const relatedCoverage=await Promise.all(related.map(companyId=>tx.get(db.doc(`companies/${companyId}/coverage/current`))));
   const ending=state.coveredCompanyIds.filter(companyId=>!next.coveredCompanyIds.includes(companyId));
   const endingCoverage=await Promise.all(ending.map(companyId=>tx.get(db.doc(`companies/${companyId}/coverage/current`))));
@@ -36,18 +40,23 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
   if(event.type==='seat_added'&&!seatAccount?.exists)denied('Pro seat must have an authenticated Account.');
   const members=await Promise.all(related.map(companyId=>tx.get(db.doc(`companies/${companyId}/memberships/${seatId}`))));
   if(event.type==='seat_added'&&resolveCommercial(next as unknown as Record<string,unknown>).plan!=='pro')denied('Only Pro has billable seats.');
-  if(relatedCoverage.some(cover=>!cover.exists||cover.get('accountId')!==accountId||!['active',undefined].includes(cover.get('state'))))denied('Pro seat change requires current active Company coverage.');
+  if(relatedCoverage.some(cover=>!cover.exists||cover.get('accountId')!==accountId||!(event.type==='seat_removed'?['active','ending',undefined]:['active',undefined]).includes(cover.get('state'))))denied('Pro seat change requires current Company coverage.');
   if(retainedCoverage&&(!retainedCoverage.exists||retainedCoverage.get('accountId')!==accountId||!['active',undefined].includes(retainedCoverage.get('state'))))denied('Retained Company coverage changed before downgrade.');
+  const writeAudience=await hostedAudience(tx,state.coveredCompanyIds);
+  const skip=new Set<string>();
+  const nextData={...raw,...next};
+  const endingData=Object.fromEntries(ending.filter((_,i)=>endingCoverage[i].get('accountId')===accountId).map(companyId=>[companyId,{accountId,state:'ending',exportEndsAt:new Date(Date.parse(event.effectiveAt)+14*86400000).toISOString()}]));
   if(event.type==='seat_added'||event.type==='seat_removed'){
    for(let i=0;i<related.length;i++){
     const companyId=related[i],previous=members[i],memberRef=db.doc(`companies/${companyId}/memberships/${seatId}`),indexRef=db.doc(`accounts/${seatId}/memberships/${companyId}`);
+    skip.add(memberRef.path);
     if(event.type==='seat_added'){
      const direct=previous.exists?{role:previous.get('role'),active:previous.get('active'),workerId:previous.get('workerId')}:null;
      const inherited={uid:seatId,companyId,role:direct?.role==='administrator'?'administrator':'manager',active:true,workerId:direct?.workerId??null,proTeamSubscriptionId:accountId,directMembership:direct,updatedAt:FieldValue.serverTimestamp()};
-     tx.set(memberRef,inherited);tx.set(indexRef,inherited);
+     tx.set(memberRef,{...inherited,hostedReadUntil:hostedReadUntil(nextData,relatedCoverage[i].data(),companyId,now)});tx.set(indexRef,inherited);
     } else if(previous.get('proTeamSubscriptionId')===accountId){
      const direct=previous.get('directMembership');
-     if(direct){const restored={uid:seatId,companyId,...direct,updatedAt:FieldValue.serverTimestamp()};tx.set(memberRef,restored);tx.set(indexRef,restored);}
+     if(direct){const restored={uid:seatId,companyId,...direct,updatedAt:FieldValue.serverTimestamp()};tx.set(memberRef,{...restored,hostedReadUntil:hostedReadUntil(nextData,relatedCoverage[i].data(),companyId,now)});tx.set(indexRef,restored);}
      else {tx.delete(memberRef);tx.delete(indexRef);}
     }
    }
@@ -57,14 +66,17 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
    const uid=downgradeSeats[i],member=downgradeMembers[i];
    if((promoteAdmin&&uid===adminUid)||member.get('proTeamSubscriptionId')!==accountId)continue;
    const direct=member.get('directMembership'),memberRef=db.doc(`companies/${retained}/memberships/${uid}`),indexRef=db.doc(`accounts/${uid}/memberships/${retained}`);
-   if(direct){const restored={uid,companyId:retained,...direct,updatedAt:FieldValue.serverTimestamp()};tx.set(memberRef,restored);tx.set(indexRef,restored);}
+   skip.add(memberRef.path);
+   if(direct){const restored={uid,companyId:retained,...direct,updatedAt:FieldValue.serverTimestamp()};tx.set(memberRef,{...restored,hostedReadUntil:hostedReadUntil(nextData,retainedCoverage?.data(),retained!,now)});tx.set(indexRef,restored);}
    else {tx.delete(memberRef);tx.delete(indexRef);}
   }
   if(promoteAdmin&&retainedCompany&&retained&&adminMember){
    const administrator={uid:adminUid,companyId:retained,role:'administrator',active:true,workerId:adminMember.get('workerId')??null,updatedAt:FieldValue.serverTimestamp()};
-   tx.set(adminMember.ref,administrator);tx.set(db.doc(`accounts/${adminUid}/memberships/${retained}`),administrator);
+   skip.add(adminMember.ref.path);
+   tx.set(adminMember.ref,{...administrator,hostedReadUntil:hostedReadUntil(nextData,{accountId},retained,now)});tx.set(db.doc(`accounts/${adminUid}/memberships/${retained}`),administrator);
    tx.update(retainedCompany.ref,{administratorCount:1,updatedAt:FieldValue.serverTimestamp()});
   }
+  writeAudience({subscriptions:{[accountId]:nextData},coverage:endingData,skip,now});
   tx.update(ref,{...Object.fromEntries(Object.entries(next).filter(([,value])=>value!==undefined)),updatedAt:FieldValue.serverTimestamp()});
   tx.create(db.doc(`subscriptions/${accountId}/commercialAudit/${event.id}`),{id:event.id,type:event.type,version:event.version,source:event.source,effectiveAt:event.effectiveAt,createdAt:FieldValue.serverTimestamp()});
   return {applied:true,version:next.lastVersion};
@@ -89,20 +101,27 @@ export async function transferProCompanyToCompany(companyId:string,buyerUid:stri
   const seats:string[]=old.get('seatIds')??[priorOwner];
   const members=await Promise.all(seats.map(uid=>tx.get(db.doc(`companies/${companyId}/memberships/${uid}`))));
   const buyerMember=seats.includes(buyerUid)?members[seats.indexOf(buyerUid)]:await tx.get(db.doc(`companies/${companyId}/memberships/${buyerUid}`));
+  const buyerData={...buyer.data(),coveredCompanyIds:[...newCovered,companyId]};
+  const newCover={accountId:buyerUid,state:'active'};
+  const readUntil=hostedReadUntil(buyerData,newCover,companyId);
+  const writeAudience=await hostedAudience(tx,[companyId]);const skip=new Set<string>();
   for(let i=0;i<seats.length;i++){
    const uid=seats[i],member=members[i];if(member.get('proTeamSubscriptionId')!==priorOwner)continue;
    const mref=db.doc(`companies/${companyId}/memberships/${uid}`),iref=db.doc(`accounts/${uid}/memberships/${companyId}`),direct=member.get('directMembership');
    if(uid===buyerUid)continue;
-   if(direct){const restored={uid,companyId,...direct,updatedAt:FieldValue.serverTimestamp()};tx.set(mref,restored);tx.set(iref,restored);}
+   skip.add(mref.path);
+   if(direct){const restored={uid,companyId,...direct,updatedAt:FieldValue.serverTimestamp()};tx.set(mref,{...restored,hostedReadUntil:readUntil});tx.set(iref,restored);}
    else {tx.delete(mref);tx.delete(iref);}
   }
   const adminWas=buyerMember.get('active')===true&&buyerMember.get('role')==='administrator';
   const administrator={uid:buyerUid,companyId,role:'administrator',active:true,workerId:buyerMember.get('workerId')??null,updatedAt:FieldValue.serverTimestamp()};
-  tx.set(db.doc(`companies/${companyId}/memberships/${buyerUid}`),administrator);
+  skip.add(`companies/${companyId}/memberships/${buyerUid}`);
+  writeAudience({subscriptions:{[buyerUid]:buyerData},coverage:{[companyId]:newCover},skip});
+  tx.set(db.doc(`companies/${companyId}/memberships/${buyerUid}`),{...administrator,hostedReadUntil:readUntil});
   tx.set(db.doc(`accounts/${buyerUid}/memberships/${companyId}`),administrator);
   tx.update(companyRef,{administratorCount:(company.get('administratorCount')??0)+(adminWas?0:1),updatedAt:FieldValue.serverTimestamp()});
   tx.set(coverRef,{accountId:buyerUid,state:'active',transferId,transferredFrom:priorOwner,updatedAt:FieldValue.serverTimestamp()});
-  tx.update(oldRef,{coveredCompanyIds:FieldValue.arrayRemove(companyId),coveredCompanyCount:FieldValue.increment(-1)});
+  if((old.get('coveredCompanyIds')??[]).includes(companyId))tx.update(oldRef,{coveredCompanyIds:FieldValue.arrayRemove(companyId),coveredCompanyCount:FieldValue.increment(-1)});
   if(!newCovered.includes(companyId))tx.update(buyerRef,{coveredCompanyIds:FieldValue.arrayUnion(companyId),coveredCompanyCount:FieldValue.increment(1)});
   tx.create(db.doc(`companies/${companyId}/commercialAudit/${transferId}`),{type:'coverage_transferred',from:priorOwner,to:buyerUid,createdAt:FieldValue.serverTimestamp()});
   return {transferred:true,companyId};
@@ -119,6 +138,8 @@ export async function attachExistingCompanyCoverage(companyId:string,purchaserUi
   const commercial=resolveCommercial(sub.data()),covered:string[]=sub.get('coveredCompanyIds')??[];
   if(!company.exists||company.get('active')!==true||company.get('administratorCount')<1||!member.exists||member.get('active')!==true||!['administrator','manager'].includes(member.get('role')))denied('Existing Company requires an Administrator and purchaser Membership.');
   if(commercial.plan!=='company'||!commercial.capabilities.canCreateCompanies||covered.length>=commercial.capabilities.maxCoveredCompanies)denied('Active Company coverage capacity required.');
+  const writeAudience=await hostedAudience(tx,[companyId]);
+  writeAudience({subscriptions:{[purchaserUid]:{...sub.data(),coveredCompanyIds:[...covered,companyId]}},coverage:{[companyId]:{accountId:purchaserUid,state:'active'}}});
   tx.create(coverRef,{accountId:purchaserUid,state:'active',attachmentId,updatedAt:FieldValue.serverTimestamp()});
   tx.update(subRef,{coveredCompanyIds:FieldValue.arrayUnion(companyId),coveredCompanyCount:FieldValue.increment(1)});
   tx.create(db.doc(`companies/${companyId}/commercialAudit/${attachmentId}`),{type:'company_coverage_attached',purchaserUid,roleAtPurchase:member.get('role'),createdAt:FieldValue.serverTimestamp()});
@@ -138,6 +159,8 @@ export async function releaseProCompany(ownerUid:string,companyId:string,release
   const resolution=resolveCommercial(sub.data(),now);
   if(resolution.plan!=='pro'||!resolution.capabilities.canUseProTeam)denied('Active Pro owner coverage required.');
   const end=new Date(now+14*86400000).toISOString();
+  const writeAudience=await hostedAudience(tx,[companyId]);
+  writeAudience({coverage:{[companyId]:{...cover.data(),state:'ending',exportEndsAt:end}},now});
   tx.update(coverRef,{state:'ending',exportEndsAt:end,releaseId,updatedAt:FieldValue.serverTimestamp()});
   tx.update(subRef,{coveredCompanyIds:FieldValue.arrayRemove(companyId),coveredCompanyCount:FieldValue.increment(-1)});
   tx.create(auditRef,{type:'pro_company_released',ownerUid,companyId,exportEndsAt:end,createdAt:FieldValue.serverTimestamp()});
@@ -176,6 +199,8 @@ export async function cleanupExpiredCompanyInEmulator(companyId:string,expectedO
   if(audit.exists)throw Error('Cleanup ID already used');
   const decision=planCoverageCleanup(expectedOwner,cover.data(),subscription.data(),now);
   if(!decision.eligible)return false;
+  const writeAudience=await hostedAudience(tx,[companyId]);
+  writeAudience({coverage:{[companyId]:{...cover.data(),state:'deleting'}},now});
   tx.update(coverRef,{state:'deleting',cleanupId,updatedAt:FieldValue.serverTimestamp()});
   tx.update(companyRef,{active:false,updatedAt:FieldValue.serverTimestamp()});
   tx.create(auditRef,{cleanupId,companyId,expectedOwner,status:'started',claimedAt:FieldValue.serverTimestamp()});

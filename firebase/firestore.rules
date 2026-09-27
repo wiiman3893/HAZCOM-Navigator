@@ -18,9 +18,9 @@ service cloud.firestore {
     }
     function manager(companyId) { return hasMembership(companyId) && member(companyId).role in ['administrator','manager']; }
     function admin(companyId) { return hasMembership(companyId) && member(companyId).role == 'administrator'; }
-    // Loss of payment blocks new operations, not retained hazard/SDS read/export access.
-    // Membership revocation is the boundary that removes distributed read access.
-    function readable(companyId) { return hasMembership(companyId); }
+    // Trusted lifecycle transactions materialize this deadline on Memberships.
+    // Cleanup timing never extends published content access. Legacy missing gates deny.
+    function readable(companyId) { return hasMembership(companyId) && member(companyId).get('hostedReadUntil',0) is number && request.time.toMillis() < member(companyId).get('hostedReadUntil',0); }
     function published(companyId, revisionId) { return readable(companyId) && get(/databases/$(database)/documents/companies/$(companyId)/publishedRevisions/$(revisionId)).data.status == 'published'; }
     function personal(companyId, workerId) { return manager(companyId) || (hasMembership(companyId) && member(companyId).workerId != null && member(companyId).workerId == workerId); }
 

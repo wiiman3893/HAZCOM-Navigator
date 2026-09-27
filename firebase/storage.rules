@@ -10,6 +10,7 @@ service firebase.storage {
       // in the atomic revision-finalization transaction. Membership removal revokes access.
       return member != null && attachment != null
         && member.data.get('active', false) == true && member.data.get('role', '') in ['administrator','manager','member']
+        && member.data.get('hostedReadUntil',0) is number && request.time.toMillis() < member.data.get('hostedReadUntil',0)
         && attachment.data.get('published', false) == true && digest == attachment.data.get('sha256', '') + '.pdf';
     }
     match /companies/{companyId}/revisions/{revisionId}/sds/{attachmentId}/{digest} {
@@ -23,6 +24,7 @@ service firebase.storage {
       let revision = firestore.get(/databases/(default)/documents/companies/$(companyId)/publishedRevisions/$(revisionId));
       return member != null && revision != null
         && member.data.get('active',false) == true && member.data.get('role','') in ['administrator','manager','member']
+        && member.data.get('hostedReadUntil',0) is number && request.time.toMillis() < member.data.get('hostedReadUntil',0)
         && revision.data.get('schemaVersion',0) == 2 && revision.data.get('status','') == 'published'
         && resource.metadata.get('manifestHash','') == revision.data.get('manifestHash','invalid')
         && resource.metadata.get('companyId','') == companyId && resource.metadata.get('revisionId','') == revisionId
