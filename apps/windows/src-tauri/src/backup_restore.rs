@@ -26,7 +26,7 @@ pub struct RestoreStatement { statement: String, values: Vec<Value> }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RestoreResult { company_id: String, database_path: String, attachment_count: usize, record_count: usize }
+pub struct RestoreResult { company_id: String, workspace_id:String, database_path: String, attachment_count: usize, record_count: usize }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -156,11 +156,15 @@ async fn stage_database(path: &Path, company_id: &str, statements: Vec<RestoreSt
 }
 
 pub(crate) async fn restore_to_root(root: &Path, company_id: String, manifest: RestoreManifest, statements: Vec<RestoreStatement>, files: Vec<RestoreFile>) -> Result<RestoreResult, String> {
+    restore_to_workspace(root,company_id.clone(),company_id,manifest,statements,files).await
+}
+pub(crate) async fn restore_to_workspace(root: &Path, workspace_id:String, company_id: String, manifest: RestoreManifest, statements: Vec<RestoreStatement>, files: Vec<RestoreFile>) -> Result<RestoreResult, String> {
+    if !valid_id(&workspace_id){return Err("Invalid workspace identity".into());}
     if !valid_id(&company_id) || files.len() > 10_000 { return Err("Invalid backup Company or SDS count".into()); }
     verify_manifest(&manifest, &company_id, &files)?;
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
     let root = root.canonicalize().map_err(|e| e.to_string())?;
-    let company_root = root.join(&company_id);
+    let company_root = root.join(&workspace_id);
     fs::create_dir_all(&company_root).map_err(|e| e.to_string())?;
     let company_root = company_root.canonicalize().map_err(|e| e.to_string())?;
     if !company_root.starts_with(&root) { return Err("Restore path escapes managed workspace".into()); }
@@ -186,7 +190,7 @@ pub(crate) async fn restore_to_root(root: &Path, company_id: String, manifest: R
         fs::OpenOptions::new().write(true).open(staging.join("workspace.db")).and_then(|file| file.sync_all()).map_err(|e| format!("Sync SQLite: {e}"))?;
         if active.exists() { return Err("Restored Company workspace already exists; merge is unsupported".into()); }
         fs::rename(&staging, &active).map_err(|e| format!("Activate restore: {e}"))?;
-        Ok(RestoreResult { company_id, database_path: active.join("workspace.db").to_string_lossy().into_owned(), attachment_count: files.len(), record_count })
+        Ok(RestoreResult { company_id,workspace_id:format!("restored-{workspace_id}"), database_path: active.join("workspace.db").to_string_lossy().into_owned(), attachment_count: files.len(), record_count })
     }.await;
     if result.is_err() && staging.starts_with(&company_root) && staging.exists() {
         let _ = fs::remove_dir_all(&staging);
@@ -198,15 +202,31 @@ pub(crate) async fn restore_to_root(root: &Path, company_id: String, manifest: R
 #[tauri::command]
 pub async fn restore_company_backup(app: tauri::AppHandle, company_id: String, manifest: RestoreManifest, statements: Vec<RestoreStatement>, files: Vec<RestoreFile>) -> Result<RestoreResult, String> {
     let root = app.path().app_data_dir().map_err(|e| e.to_string())?.join("restored-workspaces");
-    restore_to_root(&root, company_id, manifest, statements, files).await
+    restore_to_workspace(&root,format!("restore-{:032x}",rand::random::<u128>()),company_id, manifest, statements, files).await
 }
 
 pub(crate) async fn inspect_root(root: &Path, company_id: String) -> Result<RestoreInspection, String> {
+    inspect_workspace(root,&company_id,company_id.clone()).await
+}
+pub(crate) fn workspace_company(root:&Path,id:&str)->Result<String,String>{
+    if !valid_id(id){return Err("Invalid workspace identity".into());}
+    let root=root.canonicalize().map_err(|e|e.to_string())?;
+    let path=root.join(id).join("active/restore-manifest.json").canonicalize().map_err(|e|e.to_string())?;
+    if !path.starts_with(&root){return Err("Workspace metadata escapes managed storage".into());}
+    let manifest:RestoreManifest=serde_json::from_slice(&fs::read(path).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+    Ok(manifest.company_id)
+}
+pub(crate) async fn inspect_workspace(root: &Path, workspace_id:&str, company_id: String) -> Result<RestoreInspection, String> {
+    if !valid_id(workspace_id){return Err("Invalid workspace identity".into());}
     if !valid_id(&company_id) { return Err("Invalid restored Company identity".into()); }
     let root=root.canonicalize().map_err(|e|e.to_string())?;
-    let company_root=root.join(&company_id).canonicalize().map_err(|e|e.to_string())?;
+    let company_root=root.join(workspace_id).canonicalize().map_err(|e|e.to_string())?;
     let active=company_root.join("active").canonicalize().map_err(|e|e.to_string())?;
-    if !company_root.starts_with(&root)||!active.starts_with(&company_root) { return Err("Restored workspace path escapes managed storage".into()); }
+    if company_root!=root.join(workspace_id)||active!=company_root.join("active") { return Err("Restored workspace path escapes managed storage".into()); }
+    for name in ["workspace.db","restore-manifest.json","restore-files.json"] {
+        let path=active.join(name).canonicalize().map_err(|e|e.to_string())?;
+        if path!=active.join(name){return Err("Restored workspace file alias is unsafe".into());}
+    }
     let manifest:RestoreManifest=serde_json::from_slice(&fs::read(active.join("restore-manifest.json")).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
     if manifest.format!="hazcom-company-backup"||!matches!(manifest.version,1|2)||manifest.version==2&&manifest.schema_version!=Some(3)||manifest.company_id!=company_id {return Err("Restored manifest is invalid".into());}
     let options=SqliteConnectOptions::new().filename(active.join("workspace.db")).read_only(true).foreign_keys(true);
@@ -221,7 +241,8 @@ pub(crate) async fn inspect_root(root: &Path, company_id: String) -> Result<Rest
         let chemical_products:i64=sqlx::query_scalar("SELECT count(*) FROM chemical_product").fetch_one(&pool).await.map_err(|e|e.to_string())?;
         let workers:i64=sqlx::query_scalar("SELECT count(*) FROM worker").fetch_one(&pool).await.map_err(|e|e.to_string())?;
         let rows:Vec<(String,String,String,String,i64)>=sqlx::query_as("SELECT id,owner_type,owner_id,relative_path,size_bytes FROM dm_attachments ORDER BY id").fetch_all(&pool).await.map_err(|e|e.to_string())?;
-        if rows.len()!=manifest.attachment_count {return Err("Restored SDS count changed".into());}
+        let saved:Vec<StoredDescriptor>=serde_json::from_slice(&fs::read(active.join("restore-files.json")).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+        if saved.len()!=manifest.attachment_count||rows.len()<saved.len() {return Err("Restored SDS count changed".into());}
         let mut descriptors=Vec::with_capacity(rows.len());
         for (attachment_id,owner_type,owner_id,relative_path,size_bytes) in rows {
             if !valid_id(&attachment_id)||!valid_id(&owner_id)||owner_type!="chemical_product"||size_bytes<0||relative_path!=format!("{company_id}/{attachment_id}.pdf") {return Err("Restored SDS metadata is unsafe".into());}
@@ -236,13 +257,13 @@ pub(crate) async fn inspect_root(root: &Path, company_id: String) -> Result<Rest
             let sha256=format!("{:x}",Sha256::digest(&bytes));
             let expected:Option<String>=sqlx::query_scalar("SELECT sha256 FROM authoring_sds_integrity WHERE attachment_id=?")
                 .bind(&attachment_id).fetch_optional(&pool).await.map_err(|e|e.to_string())?;
-            if expected.is_some_and(|hash|hash!=sha256) {return Err("Restored SDS SHA-256 changed".into());}
+            if expected.as_ref().is_some_and(|hash|hash!=&sha256) {return Err("Restored SDS SHA-256 changed".into());}
+            if expected.is_none()&&!saved.iter().any(|item|item.attachment_id==attachment_id&&item.sha256==sha256){return Err("Restored SDS bytes differ from activation".into());}
             descriptors.push(StoredDescriptor{attachment_id,owner_id,size_bytes:bytes.len(),sha256});
         }
-        let saved:Vec<StoredDescriptor>=serde_json::from_slice(&fs::read(active.join("restore-files.json")).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
-        if saved!=descriptors {return Err("Restored SDS bytes or ownership differ from activation".into());}
+        if saved.iter().any(|item|!descriptors.contains(item)) {return Err("Restored SDS bytes or ownership differ from activation".into());}
         if manifest.version==2 {
-            let actual=format!("{:x}",Sha256::digest(serde_json::to_vec(&descriptors).map_err(|e|e.to_string())?));
+            let actual=format!("{:x}",Sha256::digest(serde_json::to_vec(&saved).map_err(|e|e.to_string())?));
             if manifest.attachment_hash.as_deref()!=Some(actual.as_str()) {return Err("Restored SDS manifest hash changed".into());}
         }
         Ok(RestoreInspection{company_id,package_version:manifest.version,schema_version:manifest.schema_version,work_areas,chemical_products,workers,verified_sds:descriptors.len()})
@@ -253,9 +274,10 @@ pub(crate) async fn inspect_root(root: &Path, company_id: String) -> Result<Rest
 
 /** Read-only verification of an activated separate restore; never opens the primary authoring DB. */
 #[tauri::command]
-pub async fn inspect_restored_company_backup(app: tauri::AppHandle, company_id: String) -> Result<RestoreInspection, String> {
+pub async fn inspect_restored_company_backup(app: tauri::AppHandle, company_id: String,workspace_id:Option<String>) -> Result<RestoreInspection, String> {
     let root=app.path().app_data_dir().map_err(|e|e.to_string())?.join("restored-workspaces");
-    inspect_root(&root,company_id).await
+    let id=match workspace_id.as_deref(){Some(id)=>id.strip_prefix("restored-").ok_or("Invalid workspace identity")?,None=>&company_id};
+    inspect_workspace(&root,id,company_id.clone()).await
 }
 
 #[cfg(test)]

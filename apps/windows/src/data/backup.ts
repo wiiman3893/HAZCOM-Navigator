@@ -3,6 +3,7 @@ import {exportCompanyBackup,prepareNativeCompanyRestore} from '@hazcom/sync/back
 import {doc,getDocFromServer} from 'firebase/firestore';
 import {auth,db as cloud,call,verifyCompany} from '../auth/firebase';
 import {openDatabase} from './database';
+import {enforcePublicationLimits,type Capabilities} from '@hazcom/core';
 
 interface CoverageStatus {capabilities:{canExportBackup:boolean};status:string;}
 
@@ -16,9 +17,10 @@ export async function exportWindowsCompanyBackup(uid:string,companyId:string){
  };
  await authorize();
  const db=await openDatabase();
+ if(db.lease.companyId!==companyId)throw Error('WORKSPACE_COMPANY_MISMATCH');
  const packageData=await exportCompanyBackup(
   {select:(statement:string,values:unknown[]=[])=>db.select(statement,values)},
-  {read:async(relativePath:string)=>new Uint8Array(await invoke<number[]>('read_publication_sds',{relativePath}))},
+  db.files,
   companyId
  );
  await authorize();
@@ -32,21 +34,24 @@ export async function restoreWindowsCompanyBackup(uid:string,companyId:string,pa
   if(access.role==='member'||auth.currentUser?.uid!==uid)throw Error('Company restore requires Manager or Administrator access.');
   const account=await getDocFromServer(doc(cloud,'accounts',uid));
   if(account.get('activeCompanyId')!==companyId)throw Error('Active Company changed. Refresh access.');
-  const coverage=await call<{capabilities:{canAuthor:boolean}}> ('getCompanyCapabilities',{companyId});
+  const coverage=await call<{capabilities:Capabilities}> ('getCompanyCapabilities',{companyId});
   if(!coverage.capabilities.canAuthor)throw Error('COMPANY_RESTORE_REQUIRES_ACTIVE_COVERAGE');
+  return coverage.capabilities;
  };
  await authorize();
  const plan=await prepareNativeCompanyRestore(packageData);
  if(plan.companyId!==companyId)throw Error('Backup Company does not match the authorized Company.');
- await authorize();
- return invoke<{companyId:string;databasePath:string;attachmentCount:number;recordCount:number}>('restore_company_backup',plan);
+ const capabilities=await authorize();
+ const tables=(packageData as {tables:Record<string,Array<{deleted_at?:string|null}>>}).tables;
+ enforcePublicationLimits(capabilities,{workAreas:tables.work_area.filter(row=>!row.deleted_at).length,chemicalProducts:tables.chemical_product.filter(row=>!row.deleted_at).length,workers:tables.worker.filter(row=>!row.deleted_at).length});
+ return invoke<{companyId:string;workspaceId:string;databasePath:string;attachmentCount:number;recordCount:number}>('restore_company_backup',plan);
 }
 
 /** Rechecks Company access and coverage before reading the separate restored workspace. */
-export async function inspectWindowsRestoredCompanyBackup(uid:string,companyId:string){
+export async function inspectWindowsRestoredCompanyBackup(uid:string,companyId:string,workspaceId?:string){
  const access=await verifyCompany(uid,companyId);
  if(access.role==='member'||auth.currentUser?.uid!==uid)throw Error('Company backup inspection requires Manager or Administrator access.');
  const coverage=await call<CoverageStatus>('getCompanyCoverageStatus',{companyId});
  if(!coverage.capabilities.canExportBackup)throw Error('COMPANY_BACKUP_NOT_AVAILABLE');
- return invoke<{companyId:string;packageVersion:number;schemaVersion:number|null;workAreas:number;chemicalProducts:number;workers:number;verifiedSds:number}>('inspect_restored_company_backup',{companyId});
+ return invoke<{companyId:string;packageVersion:number;schemaVersion:number|null;workAreas:number;chemicalProducts:number;workers:number;verifiedSds:number}>('inspect_restored_company_backup',{companyId,workspaceId});
 }

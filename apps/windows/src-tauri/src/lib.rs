@@ -1,4 +1,3 @@
-mod authoring;
 mod publication_files;
 mod browser_auth;
 mod backup_restore;
@@ -31,15 +30,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             browser_auth::google_browser_sign_in,
-            publication_files::read_publication_sds,
-            publication_files::store_authoring_sds,
-            publication_files::store_sds_import_source,
-            authoring::authoring_batch,
             backup_restore::restore_company_backup,
             backup_restore::inspect_restored_company_backup
             ,workspace::activate_workspace,workspace::remembered_workspace,workspace::list_workspaces,
             workspace::close_workspace,workspace::workspace_select,workspace::workspace_batch,
-            workspace::workspace_store_pdf,workspace::workspace_read_pdf
+            workspace::workspace_store_pdf,workspace::workspace_read_pdf,workspace::workspace_journal
         ])
         .plugin(
             tauri_plugin_sql::Builder::default()

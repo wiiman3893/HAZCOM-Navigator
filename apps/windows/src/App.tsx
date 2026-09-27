@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocsFromServer, doc, onSnapshot } from 'firebase/firestore';
 import { auth, db, configurationError, signIn, signOutAccount, loadAccount, call, type AccountSession, type CompanyAccess } from './auth/firebase';
-import { closeWorkspace } from './data/database';
+import { closeWorkspace,ensureWorkspace,listWorkspaces,selectWorkspace,type WorkspaceDatabase,type WorkspaceEntry } from './data/database';
 import { openAuthoring } from './data/authoring';
 import AuthoringWorkspace from './AuthoringWorkspace';
-import {windowsPublication} from './data/publication';
+import {createWindowsPublication} from './data/publication';
+import {exportWindowsCompanyBackup,restoreWindowsCompanyBackup} from './data/backup';
 
 
 
@@ -77,12 +78,29 @@ function AuthenticatedApp(){
 }
 
 function Workspace({uid,company,error}:{uid:string;company:CompanyAccess;error:string}){
-  const open=useCallback(()=>openAuthoring(uid,company.id),[uid,company.id]);
+  const [database,setDatabase]=useState<WorkspaceDatabase|null>(null),[entries,setEntries]=useState<WorkspaceEntry[]>([]),[notice,setNotice]=useState(''),[switching,setSwitching]=useState(false);
+  const [publication,setPublication]=useState<ReturnType<typeof createWindowsPublication>|null>(null);
+  useEffect(()=>{let stopped=false;if(company.role==='member')return;
+    void ensureWorkspace(uid,company.id).then(async result=>{
+      const items=await listWorkspaces(uid,company.id);if(stopped)return;
+      setDatabase(result.database);setPublication(createWindowsPublication(result.database));setEntries(items);setNotice(result.notice??'');
+    }).catch(e=>{if(!stopped)setNotice(message(e));});return()=>{stopped=true;};
+  },[uid,company.id,company.role]);
+  const open=useCallback(()=>{if(!database)throw Error('Workspace is not open.');return openAuthoring(uid,company.id,database);},[uid,company.id,database]);
+  async function select(id:string){
+    if(!window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))return;
+    setSwitching(true);setNotice('');try{const next=await selectWorkspace(uid,company.id,id);setDatabase(next);setPublication(createWindowsPublication(next));}catch(e){setNotice(message(e));}finally{setSwitching(false);}
+  }
+  async function exportBackup(){setSwitching(true);try{const backup=await exportWindowsCompanyBackup(uid,company.id);const url=URL.createObjectURL(new Blob([JSON.stringify(backup)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`hazcom-${company.id}-backup.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){setNotice(message(e));}finally{setSwitching(false);}}
+  async function restore(file:File){setSwitching(true);try{if(file.size>100*1024*1024)throw Error('Choose a backup smaller than 100 MiB for this restore workflow.');await restoreWindowsCompanyBackup(uid,company.id,JSON.parse(await file.text()));setEntries(await listWorkspaces(uid,company.id));setNotice('Backup restored into a separate workspace. Select it to begin authoring.');}catch(e){setNotice(message(e));}finally{setSwitching(false);}}
   if(company.role==='member')return <main><h1>Company member access</h1><p>Your membership is verified. The published safety-data reader is planned for a later update.</p></main>;
-  return <><AuthoringWorkspace company={company} open={open} publication={windowsPublication} administration={{
-    update:async(name,email)=>{await call('updateCompany',{companyId:company.id,company:{name,contact_email:email}});await openAuthoring(uid,company.id);},
+  return <><section className="panel" aria-label="Local workspace"><label>Local workspace · {company.name}<select disabled={switching||!database} value={database?.lease.workspaceId??'primary'} onChange={e=>void select(e.target.value)}>{entries.map(entry=><option key={entry.workspaceId} value={entry.workspaceId} disabled={!entry.available}>{entry.kind==='primary'?'Primary workspace':`Restored workspace · ${entry.workspaceId}`}{!entry.available?' · unavailable':''}</option>)}</select></label>
+    <button disabled={switching||!database} onClick={()=>void exportBackup()}>Export Company backup</button><label>Restore Company backup<input type="file" accept="application/json,.json" disabled={switching} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void restore(file);}}/></label>
+    {notice&&<p role="status">{notice}</p>}{entries.filter(entry=>!entry.available).map(entry=><p key={entry.workspaceId} role="alert">{entry.workspaceId}: {entry.reason}</p>)}
+  </section>{database?.lease.readOnly&&<main className="panel"><h2>Read and export workspace</h2><p>Authoring is paused for this Company's current coverage. You can export the selected workspace using the backup button above.</p></main>}{database&&!database.lease.readOnly&&publication&&<AuthoringWorkspace key={database.lease.token} company={company} open={open} publication={publication} administration={{
+    update:async(name,email)=>{await call('updateCompany',{companyId:company.id,company:{name,contact_email:email}});await openAuthoring(uid,company.id,database);},
     members:async()=>{const rows=await getDocsFromServer(collection(db,'companies',company.id,'memberships'));return rows.docs.map(d=>d.data());},
     setMember:async(value)=>{await call('setMembership',{companyId:company.id,...value});}
-  }}/>{error&&<p role="alert">{error}</p>}</>;
+  }}/>} {error&&<p role="alert">{error}</p>}</>;
 }
 function message(error:unknown){return error instanceof Error?error.message:String(error);}

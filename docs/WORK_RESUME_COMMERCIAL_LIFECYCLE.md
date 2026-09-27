@@ -1,5 +1,15 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 11 — recovered frontend/native routing (2026-09-27)
+
+Recovered starting task/remote task `ed369561623d64f3214d023cfd163e00ff08e96c`; fetched main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. Eleven uncommitted routing files were preserved. The interrupted App/workspace patch had not executed: automatic review could not run because the usage allowance expired, not because the action was determined unsafe. Smaller read-only UI/native changes were applied normally and verified.
+
+Authoring, managed SDS/Bulk source files, backup export and publication journals now use a captured native workspace lease. Removed obsolete fixed-pool authoring commands and frontend SQL-plugin permissions. Each restore receives a distinct managed identity. The minimal selector lists Company-scoped restores, preserves the previous workspace on failed selection, and remembers selection per Account/Company. Restored inspection permits newly authored SDS only with integrity metadata. Grace/export access opens SQLite read-only, skips migrations, rejects writes/files/journal mutation and offers export without authoring UI. Restore enforces current entity limits. Restored publication remains explicitly blocked pending isolation acceptance.
+
+Validation executed: native `cargo test --lib` 9/9; Windows build passed; publication workflow 6/6; existing browser authoring UI 6/6. Native tests include repeated A/B switches, failed-candidate preservation, pool closure, stale leases, same-Company restore isolation, owned SDS reads, atomic batch rollback, separate journals, reopening, and byte-identical read-only database access. These are native service tests, not a fresh visual native-app acceptance. Bundle-size warning remains informational.
+
+Next: full actual-authoring/native workspace round trip, async switch audit, adversarial restart/corruption cases, hosted-read cutoff implementation and emulator lifecycle races, diagnostics, broad regression. DO NOT CLAIM YET: all milestone acceptance complete, restored publication safe/enabled, hosted cutoff enforced, main integration or live security proof. No deployment/cloud mutation; frozen branches and personal setup script untouched. This checkpoint is on the task branch only.
+
 ## Continuation checkpoint 10 — native session foundation (2026-09-27)
 
 Continuation started at task `c6a19e127a8ab70d65b55e2eec974c787215530b`; fetched main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. The user decided hosted reads must stop exactly at the 14-day grace/release deadline; that policy is now recorded in the commercial contract, but Rules implementation remains pending.

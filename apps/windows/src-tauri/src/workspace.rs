@@ -10,10 +10,10 @@ use tokio::sync::Mutex;
 
 #[derive(Default)]
 pub struct WorkspaceState(pub Mutex<Option<Session>>);
-pub struct Session { pub lease: Lease, pub pool: SqlitePool, pub files: PathBuf }
+pub struct Session { pub lease: Lease, pub pool: SqlitePool, pub files: PathBuf, journal:PathBuf }
 #[derive(Clone, Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct Lease { pub workspace_id:String, pub company_id:String, pub token:String }
+pub struct Lease { pub workspace_id:String, pub company_id:String, pub token:String, pub read_only:bool }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
 pub struct Entry { workspace_id:String, company_id:String, kind:String, available:bool, reason:Option<String> }
@@ -45,33 +45,40 @@ async fn registry(root:&Path)->Result<SqlitePool,String>{
  if let Err(e)=sqlx::query("CREATE TABLE IF NOT EXISTS selections(account_id TEXT NOT NULL,company_id TEXT NOT NULL,workspace_id TEXT NOT NULL,PRIMARY KEY(account_id,company_id))").execute(&pool).await {pool.close().await;return Err(e.to_string());}
  Ok(pool)
 }
-async fn prepare(config:&Path,data:&Path,id:&str,company:&str)->Result<Session,String>{
+async fn prepare(config:&Path,data:&Path,id:&str,company:&str,read_only:bool)->Result<Session,String>{
  if !valid_id(company){return Err("WORKSPACE_COMPANY_INVALID".into());}
  let (path,files)=if id=="primary" {
   fs::create_dir_all(config).map_err(|e|e.to_string())?;
   let path=config.join("hazcom-navigator.db");if path.exists(){inside(config,&path)?;}
   (path,data.join("attachments"))
  }else{
-  if id!=format!("restored-{company}"){return Err("WORKSPACE_ID_INVALID".into());}
+  let directory=id.strip_prefix("restored-").filter(|id|valid_id(id)).ok_or("WORKSPACE_ID_INVALID")?;
   let root=data.join("restored-workspaces");
-  super::backup_restore::inspect_root(&root,company.to_string()).await?;
-  let active=inside(&root,&root.join(company).join("active"))?;
+  super::backup_restore::inspect_workspace(&root,directory,company.to_string()).await?;
+  let active=inside(&root,&root.join(directory).join("active"))?;
   (inside(&active,&active.join("workspace.db"))?,inside(&active,&active.join("attachments"))?)
  };
- let pool=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(path).create_if_missing(id=="primary").foreign_keys(true)).await.map_err(|e|e.to_string())?;
+ let journal=if id=="primary"{config.join("hazcom-publication-journal.db")}else{path.parent().unwrap().join("publication-journal.db")};
+ if journal.exists(){inside(journal.parent().unwrap(),&journal)?;}
+ let pool=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(path).create_if_missing(id=="primary"&&!read_only).read_only(read_only).foreign_keys(true)).await.map_err(|e|e.to_string())?;
  let result=async {
-  super::backup_restore::migrator().run(&pool).await.map_err(|e|e.to_string())?;
+  if !read_only{super::backup_restore::migrator().run(&pool).await.map_err(|e|e.to_string())?;}
+  else {let version:i64=sqlx::query_scalar("SELECT max(version) FROM _sqlx_migrations WHERE success=1").fetch_one(&pool).await.map_err(|e|e.to_string())?;if !(3..=4).contains(&version){return Err("WORKSPACE_SCHEMA_UNSUPPORTED".into());}}
   let integrity:String=sqlx::query_scalar("PRAGMA integrity_check").fetch_one(&pool).await.map_err(|e|e.to_string())?;
   let broken:i64=sqlx::query_scalar("SELECT count(*) FROM pragma_foreign_key_check").fetch_one(&pool).await.map_err(|e|e.to_string())?;
   if integrity!="ok"||broken!=0{return Err("WORKSPACE_SQLITE_INVALID".to_string());} Ok(())
  }.await;
  if let Err(e)=result {pool.close().await;return Err(e);}
- Ok(Session{lease:Lease{workspace_id:id.into(),company_id:company.into(),token:format!("{:032x}",rand::random::<u128>())},pool,files})
+ Ok(Session{lease:Lease{workspace_id:id.into(),company_id:company.into(),token:format!("{:032x}",rand::random::<u128>()),read_only},pool,files,journal})
 }
+#[cfg(test)]
 async fn activate(state:&WorkspaceState,config:&Path,data:&Path,account:&str,company:&str,id:&str)->Result<Lease,String>{
+ activate_mode(state,config,data,account,company,id,false).await
+}
+async fn activate_mode(state:&WorkspaceState,config:&Path,data:&Path,account:&str,company:&str,id:&str,read_only:bool)->Result<Lease,String>{
  if !valid_id(account){return Err("WORKSPACE_ACCOUNT_INVALID".into());}
  let mut guard=state.0.lock().await;
- let next=prepare(config,data,id,company).await?;
+ let next=prepare(config,data,id,company,read_only).await?;
  let saved=async {
   let registry=registry(data).await?;
   let result=sqlx::query("INSERT INTO selections VALUES(?,?,?) ON CONFLICT(account_id,company_id) DO UPDATE SET workspace_id=excluded.workspace_id").bind(account).bind(company).bind(id).execute(&registry).await.map_err(|e|e.to_string());
@@ -83,8 +90,8 @@ async fn activate(state:&WorkspaceState,config:&Path,data:&Path,account:&str,com
  Ok(lease)
 }
 #[tauri::command]
-pub async fn activate_workspace(app:tauri::AppHandle,state:tauri::State<'_,WorkspaceState>,account_id:String,company_id:String,workspace_id:String)->Result<Lease,String>{
- activate(&state,&app.path().app_config_dir().map_err(|e|e.to_string())?,&app.path().app_data_dir().map_err(|e|e.to_string())?,&account_id,&company_id,&workspace_id).await
+pub async fn activate_workspace(app:tauri::AppHandle,state:tauri::State<'_,WorkspaceState>,account_id:String,company_id:String,workspace_id:String,read_only:bool)->Result<Lease,String>{
+ activate_mode(&state,&app.path().app_config_dir().map_err(|e|e.to_string())?,&app.path().app_data_dir().map_err(|e|e.to_string())?,&account_id,&company_id,&workspace_id,read_only).await
 }
 #[tauri::command]
 pub async fn remembered_workspace(app:tauri::AppHandle,account_id:String,company_id:String)->Result<Option<String>,String>{
@@ -97,10 +104,14 @@ pub async fn list_workspaces(app:tauri::AppHandle,company_id:String)->Result<Vec
  if !valid_id(&company_id){return Err("WORKSPACE_COMPANY_INVALID".into());}
  let mut entries=vec![Entry{workspace_id:"primary".into(),company_id:company_id.clone(),kind:"primary".into(),available:true,reason:None}];
  let root=app.path().app_data_dir().map_err(|e|e.to_string())?.join("restored-workspaces");
- if root.join(&company_id).exists(){
-  let result=super::backup_restore::inspect_root(&root,company_id.clone()).await;
-  entries.push(Entry{workspace_id:format!("restored-{company_id}"),company_id,kind:"restored".into(),available:result.is_ok(),reason:result.err()});
- } Ok(entries)
+ if root.exists(){for directory in fs::read_dir(&root).map_err(|e|e.to_string())?{
+  let directory=directory.map_err(|e|e.to_string())?;let id=directory.file_name().to_string_lossy().into_owned();
+  if !valid_id(&id){continue;}
+  match super::backup_restore::workspace_company(&root,&id){
+   Ok(company) if company==company_id=>{let result=super::backup_restore::inspect_workspace(&root,&id,company_id.clone()).await;entries.push(Entry{workspace_id:format!("restored-{id}"),company_id:company_id.clone(),kind:"restored".into(),available:result.is_ok(),reason:result.err()});},
+   _=>{} // Unidentifiable/incomplete artifacts are never selectable.
+  }
+ }} entries[1..].sort_by(|a,b|a.workspace_id.cmp(&b.workspace_id));Ok(entries)
 }
 #[tauri::command]
 pub async fn close_workspace(state:tauri::State<'_,WorkspaceState>)->Result<(),String>{
@@ -108,8 +119,18 @@ pub async fn close_workspace(state:tauri::State<'_,WorkspaceState>)->Result<(),S
 }
 #[tauri::command]
 pub async fn workspace_select(state:tauri::State<'_,WorkspaceState>,token:String,statement:String,values:Vec<Value>)->Result<Vec<Value>,String>{
+ select(&state,token,statement,values).await
+}
+async fn select(state:&WorkspaceState,token:String,statement:String,values:Vec<Value>)->Result<Vec<Value>,String>{
  let guard=state.0.lock().await;let session=checked(&guard,&token)?;
- let rows=bind(&statement,values)?.fetch_all(&session.pool).await.map_err(|e|e.to_string())?;
+ let prefix=statement.trim_start().to_ascii_uppercase();
+ if !prefix.starts_with("SELECT ")&&!prefix.starts_with("WITH "){return Err("WORKSPACE_READ_SQL_REQUIRED".into());}
+ let query=bind(&statement,values)?;
+ let mut connection=session.pool.acquire().await.map_err(|e|e.to_string())?;
+ sqlx::query("PRAGMA query_only=ON").execute(&mut *connection).await.map_err(|e|e.to_string())?;
+ let result=query.fetch_all(&mut *connection).await.map_err(|e|e.to_string());
+ sqlx::query("PRAGMA query_only=OFF").execute(&mut *connection).await.map_err(|e|e.to_string())?;
+ let rows=result?;
  rows.iter().map(|row|{
   let mut object=Map::new();for (i,column) in row.columns().iter().enumerate(){
    let raw=row.try_get_raw(i).map_err(|e|e.to_string())?;
@@ -124,29 +145,61 @@ pub async fn workspace_select(state:tauri::State<'_,WorkspaceState>,token:String
 }
 #[tauri::command]
 pub async fn workspace_batch(state:tauri::State<'_,WorkspaceState>,token:String,statements:Vec<Statement>)->Result<(),String>{
+ batch(&state,token,statements).await
+}
+async fn batch(state:&WorkspaceState,token:String,statements:Vec<Statement>)->Result<(),String>{
  let guard=state.0.lock().await;let session=checked(&guard,&token)?;
+ if session.lease.read_only{return Err("WORKSPACE_EXPORT_ONLY".into());}
  if statements.len()>10000{return Err("Workspace batch too large".into());}
  let mut tx=session.pool.begin().await.map_err(|e|e.to_string())?;
- for item in statements{bind(&item.statement,item.values)?.execute(&mut *tx).await.map_err(|e|e.to_string())?;}
+ for item in statements{
+  let prefix=item.statement.trim_start().to_ascii_uppercase();
+  if item.statement.contains(';')||!["INSERT ","UPDATE ","DELETE "].iter().any(|p|prefix.starts_with(p)){return Err("WORKSPACE_MUTATION_SQL_INVALID".into());}
+  bind(&item.statement,item.values)?.execute(&mut *tx).await.map_err(|e|e.to_string())?;
+ }
  tx.commit().await.map_err(|e|e.to_string())
 }
 
 #[tauri::command]
-pub async fn workspace_store_pdf(state:tauri::State<'_,WorkspaceState>,token:String,company_id:String,id:String,bytes:Vec<u8>,import_source:bool)->Result<String,String>{
+pub async fn workspace_journal(state:tauri::State<'_,WorkspaceState>,token:String,key:String,value:Option<String>)->Result<Option<String>,String>{
+ journal(&state,token,key,value).await
+}
+async fn journal(state:&WorkspaceState,token:String,key:String,value:Option<String>)->Result<Option<String>,String>{
  let guard=state.0.lock().await;let session=checked(&guard,&token)?;
+ if session.lease.read_only{return Err("WORKSPACE_EXPORT_ONLY".into());}
+ if key.len()>1024||value.as_ref().is_some_and(|v|v.len()>8*1024*1024){return Err("WORKSPACE_JOURNAL_TOO_LARGE".into());}
+ if session.journal.exists(){inside(session.journal.parent().unwrap(),&session.journal)?;}
+ let pool=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(&session.journal).create_if_missing(true)).await.map_err(|e|e.to_string())?;
+ let result=async {
+  sqlx::query("CREATE TABLE IF NOT EXISTS publication_journal(id TEXT PRIMARY KEY,value TEXT NOT NULL)").execute(&pool).await.map_err(|e|e.to_string())?;
+  if let Some(value)=value {sqlx::query("INSERT INTO publication_journal VALUES(?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value").bind(&key).bind(value).execute(&pool).await.map_err(|e|e.to_string())?;}
+  sqlx::query_scalar("SELECT value FROM publication_journal WHERE id=?").bind(key).fetch_optional(&pool).await.map_err(|e|e.to_string())
+ }.await;pool.close().await;result
+}
+
+#[tauri::command]
+pub async fn workspace_store_pdf(state:tauri::State<'_,WorkspaceState>,token:String,company_id:String,id:String,bytes:Vec<u8>,import_source:bool)->Result<String,String>{
+ store_pdf(&state,token,company_id,id,bytes,import_source).await
+}
+async fn store_pdf(state:&WorkspaceState,token:String,company_id:String,id:String,bytes:Vec<u8>,import_source:bool)->Result<String,String>{
+ let guard=state.0.lock().await;let session=checked(&guard,&token)?;
+ if session.lease.read_only{return Err("WORKSPACE_EXPORT_ONLY".into());}
  if company_id!=session.lease.company_id{return Err("WORKSPACE_COMPANY_MISMATCH".into());}
  super::publication_files::store_pdf_with_limit(&session.files,&company_id,&id,&bytes,if import_source{250*1024*1024}else{5*1024*1024})
 }
 #[tauri::command]
 pub async fn workspace_read_pdf(state:tauri::State<'_,WorkspaceState>,token:String,relative_path:String)->Result<Vec<u8>,String>{
+ read_pdf(&state,token,relative_path).await
+}
+async fn read_pdf(state:&WorkspaceState,token:String,relative_path:String)->Result<Vec<u8>,String>{
  use std::io::Read;
  let guard=state.0.lock().await;let session=checked(&guard,&token)?;
  let relative=Path::new(&relative_path);
  if relative_path.is_empty()||relative_path.contains(':')||relative.components().any(|c|!matches!(c,std::path::Component::Normal(_))){return Err("WORKSPACE_FILE_PATH_INVALID".into());}
  let count:i64=sqlx::query_scalar("SELECT count(*) FROM dm_attachments a JOIN chemical_product__ownership o ON o.child_id=a.owner_id WHERE a.owner_type='chemical_product' AND o.company_id=? AND a.relative_path=?")
   .bind(&session.lease.company_id).bind(&relative_path).fetch_one(&session.pool).await.map_err(|e|e.to_string())?;
- let imports:i64=sqlx::query_scalar("SELECT count(*) FROM sds_import_session WHERE company_id=? AND managed_source_path=?")
-  .bind(&session.lease.company_id).bind(&relative_path).fetch_one(&session.pool).await.map_err(|e|e.to_string())?;
+ let imports:i64=if count>0{0}else{sqlx::query_scalar("SELECT count(*) FROM sds_import_session WHERE company_id=? AND managed_source_path=?")
+  .bind(&session.lease.company_id).bind(&relative_path).fetch_one(&session.pool).await.map_err(|e|e.to_string())?};
  if count==0&&imports==0{return Err("WORKSPACE_FILE_NOT_OWNED".into());}
  let path=inside(&session.files,&session.files.join(relative))?;
  let max=if imports>0{250*1024*1024}else{5*1024*1024};
@@ -192,6 +245,72 @@ mod tests {
   let pool=state.0.lock().await.as_ref().unwrap().pool.clone();
   let count:i64=sqlx::query_scalar("SELECT count(*) FROM work_area").fetch_one(&pool).await.unwrap();assert_eq!(count,0);
   if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
+  let resolved=root.canonicalize().unwrap();assert!(resolved.starts_with(std::env::temp_dir().canonicalize().unwrap()));fs::remove_dir_all(resolved).unwrap();
+ }
+ #[tokio::test]
+ async fn same_company_restores_are_isolated_and_invalid_candidates_preserve_active_session(){
+  let root=std::env::temp_dir().join(format!("hazcom-workspace-{:016x}",rand::random::<u64>()));
+  let config=root.join("config");let data=root.join("data");let restores=data.join("restored-workspaces");
+  for id in ["copy-a","copy-b"]{
+   let plan:Plan=serde_json::from_str(include_str!("../../test/native-restore-plan.json")).unwrap();
+   crate::backup_restore::restore_to_workspace(&restores,id.into(),plan.company_id,plan.manifest,plan.statements,plan.files).await.unwrap();
+  }
+  let company="native-restore-proof";let state=WorkspaceState::default();
+  let first=activate(&state,&config,&data,"account",company,"restored-copy-a").await.unwrap();
+  {let guard=state.0.lock().await;sqlx::query("UPDATE work_area SET name='Only A'").execute(&guard.as_ref().unwrap().pool).await.unwrap();}
+  for _ in 0..12{
+   activate(&state,&config,&data,"account",company,"restored-copy-b").await.unwrap();
+   let count:i64=sqlx::query_scalar("SELECT count(*) FROM work_area WHERE name='Only A'").fetch_one(&state.0.lock().await.as_ref().unwrap().pool).await.unwrap();assert_eq!(count,0);
+   activate(&state,&config,&data,"account",company,"restored-copy-a").await.unwrap();
+  }
+  assert!(checked(&*state.0.lock().await,&first.token).is_err());
+  let current=state.0.lock().await.as_ref().unwrap().lease.clone();
+  assert!(activate(&state,&config,&data,"account","other-company","restored-copy-a").await.is_err());
+  fs::write(restores.join("copy-b/active/restore-files.json"),b"invalid json").unwrap();
+  assert!(activate(&state,&config,&data,"account",company,"restored-copy-b").await.is_err());
+  assert!(checked(&*state.0.lock().await,&current.token).is_ok());
+  assert!(activate(&state,&config,&data,"account",company,"restored-../copy-a").await.is_err());
+  if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
+  let resolved=root.canonicalize().unwrap();assert!(resolved.starts_with(std::env::temp_dir().canonicalize().unwrap()));fs::remove_dir_all(resolved).unwrap();
+ }
+ #[tokio::test]
+ async fn routed_sql_files_and_journals_are_scoped_and_batches_roll_back(){
+  use sha2::{Digest,Sha256};
+  let root=std::env::temp_dir().join(format!("hazcom-workspace-{:016x}",rand::random::<u64>()));let config=root.join("config");let data=root.join("data");
+  let plan:Plan=serde_json::from_str(include_str!("../../test/native-restore-plan.json")).unwrap();let company=plan.company_id.clone();
+  restore_to_root(&data.join("restored-workspaces"),company.clone(),plan.manifest,plan.statements,plan.files).await.unwrap();
+  let state=WorkspaceState::default();let a=activate(&state,&config,&data,"account",&company,&format!("restored-{company}")).await.unwrap();
+  let rows=select(&state,a.token.clone(),"SELECT id FROM chemical_product ORDER BY id LIMIT 1".into(),vec![]).await.unwrap();let product=rows[0]["id"].as_str().unwrap();
+  let pdf=b"%PDF-1.4\nNew local SDS".to_vec();let hash=format!("{:x}",Sha256::digest(&pdf));
+  let path=store_pdf(&state,a.token.clone(),company.clone(),"new-sds".into(),pdf.clone(),false).await.unwrap();
+  assert!(read_pdf(&state,a.token.clone(),path.clone()).await.is_err()); // Bytes alone do not establish ownership.
+  let insert=||Statement{statement:"INSERT INTO dm_attachments(id,owner_type,owner_id,relative_path,original_filename,size_bytes,created_at) VALUES (?,?,?,?,?,?,?)".into(),values:vec!["new-sds".into(),"chemical_product".into(),product.into(),path.clone().into(),"local.pdf".into(),(pdf.len() as i64).into(),"2026-09-27T00:00:00Z".into()]};
+  assert!(batch(&state,a.token.clone(),vec![insert(),insert()]).await.is_err());
+  assert!(read_pdf(&state,a.token.clone(),path.clone()).await.is_err());
+  batch(&state,a.token.clone(),vec![insert(),Statement{statement:"INSERT INTO authoring_sds_integrity VALUES (?,?)".into(),values:vec!["new-sds".into(),hash.into()]}]).await.unwrap();
+  assert_eq!(read_pdf(&state,a.token.clone(),path.clone()).await.unwrap(),pdf);
+  assert!(store_pdf(&state,a.token.clone(),"other".into(),"id".into(),pdf.clone(),false).await.is_err());
+  assert!(read_pdf(&state,a.token.clone(),"../escape.pdf".into()).await.is_err());
+  assert!(batch(&state,a.token.clone(),vec![Statement{statement:"ATTACH DATABASE 'external.db' AS external".into(),values:vec![]}]).await.is_err());
+  assert!(select(&state,a.token.clone(),"DELETE FROM work_area RETURNING id".into(),vec![]).await.is_err());
+  journal(&state,a.token.clone(),"account/attempt".into(),Some("restored-attempt".into())).await.unwrap();
+  let b=activate(&state,&config,&data,"account",&company,"primary").await.unwrap();
+  assert!(select(&state,a.token.clone(),"SELECT 1".into(),vec![]).await.is_err());
+  assert!(read_pdf(&state,b.token.clone(),path).await.is_err());
+  assert_eq!(journal(&state,b.token.clone(),"account/attempt".into(),None).await.unwrap(),None);
+  let reopened=activate(&state,&config,&data,"account",&company,&a.workspace_id).await.unwrap();
+  assert_eq!(journal(&state,reopened.token,"account/attempt".into(),None).await.unwrap(),Some("restored-attempt".into()));
+  if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
+  let db_path=data.join("restored-workspaces").join(&company).join("active/workspace.db");
+  let before=fs::read(&db_path).unwrap();
+  let readonly=activate_mode(&state,&config,&data,"account",&company,&a.workspace_id,true).await.unwrap();
+  assert!(readonly.read_only);
+  assert!(!select(&state,readonly.token.clone(),"SELECT id FROM work_area".into(),vec![]).await.unwrap().is_empty());
+  assert_eq!(batch(&state,readonly.token.clone(),vec![Statement{statement:"UPDATE work_area SET name='Forbidden'".into(),values:vec![]}]).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
+  assert_eq!(store_pdf(&state,readonly.token.clone(),company.clone(),"forbidden".into(),pdf,false).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
+  assert_eq!(journal(&state,readonly.token,"account/attempt".into(),Some("forbidden".into())).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
+  if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
+  assert_eq!(fs::read(&db_path).unwrap(),before);
   let resolved=root.canonicalize().unwrap();assert!(resolved.starts_with(std::env::temp_dir().canonicalize().unwrap()));fs::remove_dir_all(resolved).unwrap();
  }
 }
