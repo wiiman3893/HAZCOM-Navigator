@@ -68,7 +68,7 @@ export function renderSummary(report) {
     line('Remote main SHA',`${report.git.remoteMain??'UNAVAILABLE'} (${report.git.remoteSource??'unknown source'})`),
     line('Deployed backend source SHA',`${report.handoffEvidence.deployedBackendSource??'UNVERIFIED'} (repository handoff, not deployment fingerprint)`),
     line('Firebase project',report.firebase.project??report.firebaseProject),
-      line('Restored workspaces',report.workspaces?`${report.workspaces.availableRestoredCount}/${report.workspaces.restoredCount} structurally available; active in-memory session unverified; restored publication blocked`:'UNVERIFIED'),
+      line('Restored workspaces',report.workspaces?`${report.workspaces.availableRestoredCount}/${report.workspaces.restoredCount} structurally available; active in-memory session and live publication eligibility unverified`:'UNVERIFIED'),
     line('Company',report.sqlite.companySelection?.companyId?`${report.sqlite.companySelection.companyId} (${report.sqlite.companySelection.source})`:'UNVERIFIED'),
     line('Role and coverage',commercial?.status==='PASS'?`${commercial.role??'role unknown'}; ${commercial.plan??'plan unknown'} / ${commercial.commercialStatus}; coverage ${commercial.coverage?.state??'unknown'} (privileged cloud documents)`:'UNVERIFIED'),
     line('Failing checks',problems.length?problems.join('; '):'none reported'),

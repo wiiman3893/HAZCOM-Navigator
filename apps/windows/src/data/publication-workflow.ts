@@ -19,6 +19,14 @@ export type PublicationDeps={
  log?:(event:Record<string,unknown>)=>void;
 };
 
+/** Keep the selected native session stable for the entire publication attempt. */
+export function bindWorkspacePublication(workflow:ReturnType<typeof createPublicationWorkflow>,assertWorkspace:()=>void,pin:()=>()=>void){
+ return {check:workflow.check,run:async(...args:Parameters<typeof workflow.run>)=>{
+  assertWorkspace();const release=pin();
+  try{return await workflow.run(...args);}finally{release();}
+ }};
+}
+
 export function publicationError(error:unknown):string {
  const message=error instanceof Error?error.message:String(error);
  const code=(error as {code?:string})?.code;

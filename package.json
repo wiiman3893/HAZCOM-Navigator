@@ -26,6 +26,7 @@
     "test:authoring": "npm run build:authoring && npm run test -w @hazcom/authoring",
     "test:windows:publication": "npm run build:sync && node --test apps/windows/test/publication-workflow.test.mjs apps/windows/test/workspace-lifecycle.test.mjs",
     "test:authoring:ui": "playwright test --config apps/windows/test/playwright.config.mjs",
+    "test:windows:publication:emulator": "npm run build:sync && npm run build -w @hazcom/firebase-functions && npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage,functions --project demo-hazcom-navigator --config firebase/firebase.json \"node apps/windows/test/run-native-publication.mjs\"",
     "diagnostics:quick": "node scripts/diagnostics.mjs quick",
     "diagnostics": "node scripts/diagnostics.mjs normal",
     "diagnostics:full": "node scripts/diagnostics.mjs full",

@@ -1,5 +1,11 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 19 — native restored publication acceptance
+
+Recovered clean task HEAD/remote `b09b49460becec7268b5517c4fc41943442b5bad`; fetched main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. Added `npm run test:windows:publication:emulator`: actual JavaScript authoring/backup/projection and publication workflow call disposable Rust SQLite/file/journal sessions and real local Firebase schema-2 Functions. It passes with production upload concurrency, A/B distinct fingerprints, separate attempt journals and SDS roots, interrupted upload/resume with the same ID, lost finalization response reconciliation without duplicates, stale native tokens, primary journal isolation, and both switch/publication exclusion directions. No real Firebase publication occurred.
+
+Restored publication is now enabled through the existing guarded workflow; read/export sessions remain explicitly blocked. Extracted the existing run guard so production and emulator acceptance use the same guard. Diagnostics reports support separately from unverified live eligibility. Windows build, publication/lifecycle 10/10 and diagnostics 12/12 pass. Browser tests now pass 9/9 including the actual Workspace selector with isolated adapters: failed switch preserves authoring/publication selection, reload remembers it, cancellation preserves it, missing selection fallback is visible, export uses selected workspace, and Member never opens authoring. Initial test-server escaping and disabled-option assertion errors were corrected; no application defect was concealed. Full regression and final branch audit remain next; no main integration or fresh signed-in native visual acceptance claim. Main/frozen/setup/cloud mutations remain untouched.
+
 ## Continuation checkpoint 18 — deterministic orderings and filesystem bounds
 
 Checkpoint 17 pushed as `3cba6ac`. Added all six sequential release/takeover/seat-removal permutations alongside the simultaneous race. Each proves direct Member preservation, inherited owner removal, buyer coverage, exact 0/1 Company counts and harmless old cancellation replay. Found and fixed downgrade's stale `coveredCompanyCount`: billing transactions now persist it from the resulting authoritative covered list. Firebase suite passes 24/24, including persisted pending-downgrade removal.

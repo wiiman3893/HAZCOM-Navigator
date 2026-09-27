@@ -6,14 +6,16 @@ import {authoringService} from '../../../packages/authoring/src/index.js';
 import {exportCompanyBackup,prepareNativeCompanyRestore} from '../../../packages/sync/src/backup.js';
 import {buildPublication} from '../../../packages/sync/src/projection.js';
 const lines=createInterface({input:process.stdin})[Symbol.asyncIterator]();
-async function request(value){process.stdout.write(JSON.stringify(value)+'\n');const response=JSON.parse((await lines.next()).value);if(response.error)throw Error(response.error);return response.value;}
+let bridge=Promise.resolve();
+function request(value){const next=bridge.catch(()=>{}).then(async()=>{process.stdout.write(JSON.stringify(value)+'\n');const response=JSON.parse((await lines.next()).value);if(response.error)throw Error(response.error);return response.value;});bridge=next;return next;}
 const companyId='roundtrip-company';
 async function open(id){
  const lease=await request({op:'activate',id}),token=lease.token;
  const sql={select:(statement,values=[])=>request({op:'select',token,statement,values}),batch:statements=>request({op:'batch',token,statements})};
  const files={stage:(company,id,bytes)=>request({op:'stage',token,company,id,bytes:[...bytes]}),stageImport:(company,id,bytes)=>request({op:'stage',token,company,id,bytes:[...bytes],import:true}),read:async path=>new Uint8Array(await request({op:'read',token,path}))};
  const service=authoringService({sql,files,companyId,authorize:async()=>({companyId,role:'manager',active:true}),today:()=> '2026-09-27'});
- return {sql,files,service,backup:()=>exportCompanyBackup(sql,files,companyId),projection:()=>buildPublication(sql,companyId,files)};
+ const journal={get:async key=>{const value=await request({op:'journal',token,key,value:null});return value?JSON.parse(value):null;},put:(key,value)=>request({op:'journal',token,key,value:JSON.stringify(value)})};
+ return {lease,sql,files,journal,service,backup:()=>exportCompanyBackup(sql,files,companyId),projection:()=>buildPublication(sql,companyId,files)};
 }
 const pdf=new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<< /Type /Page >>\nendobj\n%%EOF');
 try{
@@ -81,6 +83,10 @@ try{
  changed=false;
  await assert.rejects(exportCompanyBackup({select:async(statement,values)=>{const rows=await b.sql.select(statement,values);if(!changed){changed=true;await request({op:'close'});}return rows;}},b.files,companyId),/STALE/);
  primary=await open('primary');assert.deepEqual((await primary.backup()).tables,original.tables);
+ if(process.env.HAZCOM_NATIVE_PUBLICATION_EMULATOR==='1'){
+  const {verifyNativePublication}=await import('./native-publication-emulator.mjs');
+  await verifyNativePublication({open,companyId});
+ }
  await request({op:'close'});
  console.error('PASS native authoring, SDS, events, trash/restore, Bulk restart, A/B isolation and backup v2 round trip');
  process.exit(0);

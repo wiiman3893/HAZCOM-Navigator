@@ -8,7 +8,7 @@ import {firebaseTransport} from '@hazcom/sync/firebase';
 import type {CommercialResolution} from '@hazcom/core';
 import {auth,db,verifyCompany,call} from '../auth/firebase';
 import {buildWindowsPublication,activeWorkspace,pinWorkspace,type WorkspaceDatabase} from './database';
-import {createPublicationWorkflow,type Attempt,type PublishedRevision,type Projection} from './publication-workflow';
+import {createPublicationWorkflow,bindWorkspacePublication,type Attempt,type PublishedRevision,type Projection} from './publication-workflow';
 
 function currentUid(){const uid=auth.currentUser?.uid;if(!uid)throw Error('Sign in required.');return uid;}
 function transport(){const app=getApp();return firebaseTransport({auth,db,functions:getFunctions(app,'us-central1'),storage:getStorage(app,`gs://${app.options.projectId}.firebasestorage.app`)});}
@@ -21,7 +21,7 @@ export function createWindowsPublication(database:WorkspaceDatabase){
  const managedFiles=database.files;
  const assertWorkspace=()=>{
   if(activeWorkspace()?.token!==database.lease.token)throw Error('Workspace changed. Refresh publication readiness.');
-  if(database.lease.workspaceId!=='primary')throw Error('Publication from restored workspaces is blocked until publication isolation acceptance is complete.');
+  if(database.lease.readOnly)throw Error('Publication is unavailable in a read/export workspace.');
  };
  async function withJournal<T>(uid:string,work:(journal:{get:(key:string)=>Promise<any>;put:(key:string,value:unknown)=>Promise<void>})=>Promise<T>):Promise<T>{
   assertWorkspace();
@@ -61,5 +61,5 @@ export function createWindowsPublication(database:WorkspaceDatabase){
  revisionId:()=>crypto.randomUUID(),
  log:event=>console.info('[hazcom-publication]',event)
 });
- return {check:workflow.check,run:async(...args:Parameters<typeof workflow.run>)=>{assertWorkspace();const release=pinWorkspace();try{return await workflow.run(...args);}finally{release();}}};
+ return bindWorkspacePublication(workflow,assertWorkspace,pinWorkspace);
 }

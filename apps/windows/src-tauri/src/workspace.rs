@@ -272,6 +272,7 @@ mod tests {
     "batch"=>{batch(&state,string("token"),serde_json::from_value(request["statements"].clone()).unwrap()).await?;Ok(Value::Null)},
     "stage"=>Ok(Value::String(store_pdf(&state,string("token"),string("company"),string("id"),serde_json::from_value(request["bytes"].clone()).unwrap(),request["import"].as_bool().unwrap_or(false)).await?)),
     "read"=>Ok(serde_json::to_value(read_pdf(&state,string("token"),string("path")).await?).unwrap()),
+    "journal"=>Ok(serde_json::to_value(journal(&state,string("token"),string("key"),request["value"].as_str().map(str::to_string)).await?).unwrap()),
     "restore"=>{let plan:Plan=serde_json::from_value(request["plan"].clone()).unwrap();crate::backup_restore::restore_to_workspace(&data.join("restored-workspaces"),string("id"),plan.company_id,plan.manifest,plan.statements,plan.files).await?;Ok(Value::Null)},
     "close"=>{if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}Ok(Value::Null)},
     _=>Err("Unknown test bridge operation".into())

@@ -22,7 +22,7 @@ export async function collectWorkspaces({appDataRoot,sourceMigrationDir}){
  const canonicalRoot=await realpath(root);
  for(const directory of directories){
   if(!directory.isDirectory()||!valid(directory.name))continue;
-  const id=directory.name,entry={workspaceId:`restored-${id}`,kind:'restored',status:'FAIL',companyId:null,authoringEligibility:'UNVERIFIED: requires live Membership and coverage',publication:{enabled:false,reason:'RESTORED_PUBLICATION_ACCEPTANCE_PENDING'}};
+  const id=directory.name,entry={workspaceId:`restored-${id}`,kind:'restored',status:'FAIL',companyId:null,authoringEligibility:'UNVERIFIED: requires live Membership and coverage',publication:{supported:true,enabled:null,reason:'UNVERIFIED: requires valid workspace, live Membership and publication coverage'}};
   result.restoredCount++;
   try{
    const expected=path.join(canonicalRoot,id,'active'),active=await realpath(path.join(root,id,'active'));

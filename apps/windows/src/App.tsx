@@ -77,7 +77,7 @@ function AuthenticatedApp(){
   </aside><Workspace key={`${session.uid}/${company.id}/${company.role}`} uid={session.uid} company={company} error={error}/></div>;
 }
 
-function Workspace({uid,company,error}:{uid:string;company:CompanyAccess;error:string}){
+export function Workspace({uid,company,error}:{uid:string;company:CompanyAccess;error:string}){
   const [database,setDatabase]=useState<WorkspaceDatabase|null>(null),[entries,setEntries]=useState<WorkspaceEntry[]>([]),[notice,setNotice]=useState(''),[switching,setSwitching]=useState(false);
   const [publication,setPublication]=useState<ReturnType<typeof createWindowsPublication>|null>(null);
   useEffect(()=>{let stopped=false;if(company.role==='member')return;

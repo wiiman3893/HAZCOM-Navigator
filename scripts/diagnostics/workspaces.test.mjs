@@ -28,7 +28,7 @@ test('workspace diagnostics are read-only, distinguish remembered selection and 
  const options={appDataRoot:root,sourceMigrationDir:path.resolve('database/migrations')};
  let report=await collectWorkspaces(options);
  assert.equal(report.restoredCount,1);assert.equal(report.availableRestoredCount,1);
- assert.equal(report.activeWorkspaceId,null);assert.equal(report.workspaces[0].publication.enabled,false);
+ assert.equal(report.activeWorkspaceId,null);assert.equal(report.workspaces[0].publication.supported,true);assert.equal(report.workspaces[0].publication.enabled,null);
  assert.equal(report.workspaces[0].verifiedSds,20);assert.equal(report.rememberedSelections[1].available,false);
  assert.equal(hash(await readFile(databaseFile)),before);assert.equal(hash(await readFile(registryFile)),registryBefore);
  assert.equal(JSON.stringify(report).includes('bytes'),false);
