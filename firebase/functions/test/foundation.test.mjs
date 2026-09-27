@@ -252,6 +252,7 @@ test('trusted Pro billing events materialize inherited Manager access and seat r
  await assert.rejects(applyTrustedBillingEvent('pro-owner-v1',{...started,id:'renew-early',version:5,type:'subscription_renewed',effectiveAt:paidThrough,payload:{administratorUid:'pro-owner-v1'}}));
  await applyTrustedBillingEvent('pro-owner-v1',{...started,id:'renew-company',version:5,type:'subscription_renewed',effectiveAt:paidThrough,payload:{administratorUid:'pro-owner-v1'}},Date.parse(paidThrough)+1);
  assert.equal((await db.doc('subscriptions/pro-owner-v1').get()).get('plan'),'company');
+ assert.equal((await db.doc('subscriptions/pro-owner-v1').get()).get('pendingDowngrade'),undefined);
  assert.equal((await db.doc('companies/pro-client-two/memberships/pro-owner-v1').get()).get('role'),'administrator');
  assert.equal((await db.doc('companies/pro-client-three/coverage/current').get()).get('state'),'ending');
  assert.equal((await db.doc('companies/pro-client-three').get()).exists,true);
@@ -557,4 +558,28 @@ test('concurrent release, takeover and seat removal converge without stale consu
  assert.ok(direct.get('hostedReadUntil')>Date.now());
  assert.equal((await db.doc(`companies/${companyId}/memberships/${buyer}`).get()).get('role'),'administrator');
  assert.equal((await transferProCompanyToCompany(companyId,buyer,'race-transfer')).transferred,false);
+});
+
+test('failed-payment retries preserve the deadline, recovery clears persisted state, and stale copies cannot revive failure',async()=>{
+ const {applyTrustedBillingEvent}=await import('../lib/commercial-admin.js');
+ const uid='payment-replay-owner',companyId='payment-replay-company';
+ await auth.createUser({uid,email:`${uid}@example.com`});await auth.updateUser(uid,{providerToLink:{providerId:'google.com',uid:`google-${uid}`,email:`${uid}@example.com`}});await call('bootstrapAccount',uid,{});
+ const now=Date.now(),at=offset=>new Date(now+offset).toISOString();
+ const event=(id,type,version,effectiveAt,payload={})=>({id,type,version,effectiveAt,payload,subscriptionId:uid,source:'mock-billing'});
+ await applyTrustedBillingEvent(uid,event('payment-start','subscription_started',1,at(-10000),{tierId:'company',cadence:'monthly'}));
+ await call('createCompany',uid,{companyId,company});
+ const ref=db.doc(`subscriptions/${uid}`),memberRef=db.doc(`companies/${companyId}/memberships/${uid}`);
+ const fail=event('payment-first-fail','payment_failed',2,at(-9000));await applyTrustedBillingEvent(uid,fail);
+ const first=(await ref.get()).data(),deadline=(await memberRef.get()).get('hostedReadUntil');
+ assert.equal((await applyTrustedBillingEvent(uid,fail)).applied,false);
+ await applyTrustedBillingEvent(uid,event('payment-distinct-retry','payment_failed',3,at(-8000)));
+ assert.equal((await ref.get()).get('graceEndsAt'),first.graceEndsAt);assert.equal((await memberRef.get()).get('hostedReadUntil'),deadline);
+ await applyTrustedBillingEvent(uid,event('payment-recover','payment_recovered',4,at(-7000)));
+ const recovered=(await ref.get()).data();assert.equal(recovered.paymentFailureAt,undefined);
+ const restoredDeadline=(await memberRef.get()).get('hostedReadUntil');assert.ok(restoredDeadline>=deadline);
+ assert.equal((await applyTrustedBillingEvent(uid,fail)).applied,false);
+ await assert.rejects(applyTrustedBillingEvent(uid,event('payment-stale-copy','payment_failed',5,at(-9000))),/Stale billing/);
+ assert.equal((await ref.get()).get('lastVersion'),4);assert.equal((await memberRef.get()).get('hostedReadUntil'),restoredDeadline);
+ await applyTrustedBillingEvent(uid,event('payment-new-failure','payment_failed',5,at(-6000)));
+ assert.equal((await ref.get()).get('paymentFailureAt'),at(-6000));
 });

@@ -149,11 +149,13 @@ test('billing lifecycle rejects unsafe transitions and recovers deterministicall
  assert.throws(()=>applyBillingEvent(failed,event('seat','seat_added',2,'2026-11-16T00:00:00Z',{uid:'third'})),/Active paid Pro/);
  assert.throws(()=>applyBillingEvent(failed,event('missing','coverage_transferred',2,'2026-11-16T00:00:00Z',{companyId:'other'})),/not covered/);
  assert.throws(()=>applyBillingEvent(failed,event('remove','seat_removed',2,'2026-11-16T00:00:00Z',{uid:'absent'})),/seat missing/);
- assert.throws(()=>applyBillingEvent(failed,event('renew','subscription_renewed',2,'2026-11-14T00:00:00Z')),/Renewal cannot precede/);
+ assert.throws(()=>applyBillingEvent(failed,event('renew','subscription_renewed',2,'2026-11-14T00:00:00Z')),/Stale billing/);
  assert.throws(()=>applyBillingEvent(failed,{...event('fail','payment_failed',1,'2026-11-15T00:00:00Z'),type:'payment_recovered'}),/ID reused/);
  assert.equal(applyBillingEvent(failed,event('fail','payment_failed',1,'2026-11-15T00:00:00Z')),failed);
  const recovered=applyBillingEvent(failed,event('recover','payment_recovered',2,'2026-11-18T00:00:00Z'));
  assert.equal(recovered.paymentFailureAt,undefined);
+ assert.throws(()=>applyBillingEvent(recovered,event('stale-failure-copy','payment_failed',3,'2026-11-15T00:00:00Z')),/Stale billing/);
+ assert.equal(applyBillingEvent(recovered,event('fail','payment_failed',1,'2026-11-15T00:00:00Z')),recovered);
  assert.equal(recovered.billingAnchorAt,'2026-11-18T00:00:00.000Z');
  assert.equal(recovered.paidThrough,'2026-12-18T00:00:00.000Z');
  assert.equal(resolveCommercial(recovered,Date.parse('2026-11-19T00:00:00Z')).status,'active');

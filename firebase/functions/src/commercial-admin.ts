@@ -45,6 +45,10 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
   const writeAudience=await hostedAudience(tx,state.coveredCompanyIds);
   const skip=new Set<string>();
   const nextData={...raw,...next};
+  // Firestore update() does not remove omitted fields. The reducer deliberately
+  // deletes these after recovery/renewal; persist those deletions explicitly.
+  if(next.paymentFailureAt===undefined)delete nextData.paymentFailureAt;
+  if(next.pendingDowngrade===undefined)delete nextData.pendingDowngrade;
   const endingData=Object.fromEntries(ending.filter((_,i)=>endingCoverage[i].get('accountId')===accountId).map(companyId=>[companyId,{accountId,state:'ending',exportEndsAt:new Date(Date.parse(event.effectiveAt)+14*86400000).toISOString()}]));
   if(event.type==='seat_added'||event.type==='seat_removed'){
    for(let i=0;i<related.length;i++){
@@ -77,7 +81,7 @@ export async function applyTrustedBillingEvent(accountId:string,event:BillingEve
    tx.update(retainedCompany.ref,{administratorCount:1,updatedAt:FieldValue.serverTimestamp()});
   }
   writeAudience({subscriptions:{[accountId]:nextData},coverage:endingData,skip,now});
-  tx.update(ref,{...Object.fromEntries(Object.entries(next).filter(([,value])=>value!==undefined)),updatedAt:FieldValue.serverTimestamp()});
+  tx.update(ref,{...Object.fromEntries(Object.entries(next).filter(([,value])=>value!==undefined)),paymentFailureAt:next.paymentFailureAt??FieldValue.delete(),pendingDowngrade:next.pendingDowngrade??FieldValue.delete(),updatedAt:FieldValue.serverTimestamp()});
   tx.create(db.doc(`subscriptions/${accountId}/commercialAudit/${event.id}`),{id:event.id,type:event.type,version:event.version,source:event.source,effectiveAt:event.effectiveAt,createdAt:FieldValue.serverTimestamp()});
   return {applied:true,version:next.lastVersion};
  });

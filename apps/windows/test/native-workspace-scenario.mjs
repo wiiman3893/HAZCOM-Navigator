@@ -62,6 +62,25 @@ try{
  primary=await open('primary');
  assert.deepEqual((await primary.backup()).tables,original.tables);
  assert.deepEqual((await primary.backup()).attachments,original.attachments);
+ // Coordinate real mutations at known export read boundaries, without sleeps.
+ b=await open('restored-copy-b');
+ let changed=false;
+ await assert.rejects(exportCompanyBackup({select:async(statement,values)=>{
+  const rows=await b.sql.select(statement,values);
+  if(!changed&&statement.startsWith('SELECT * FROM work_area ')){changed=true;await b.service.update('worker','worker',{name:'Changed during row export'});}
+  return rows;
+ }},b.files,companyId),/changed during backup/);
+ for(const mutate of [
+  ()=>b.service.importSds('product',new Uint8Array([...pdf,10,10]),'replacement.pdf','sds-race'),
+  async()=>{await b.service.trash('work_area_product','placement');await b.service.trash('work_area_product','placement',true);}
+ ]){
+  changed=false;
+  await assert.rejects(exportCompanyBackup(b.sql,{read:async path=>{const bytes=await b.files.read(path);if(!changed){changed=true;await mutate();}return bytes;}},companyId),/changed during backup/);
+ }
+ await prepareNativeCompanyRestore(await b.backup()); // Retry produces a valid coherent package.
+ changed=false;
+ await assert.rejects(exportCompanyBackup({select:async(statement,values)=>{const rows=await b.sql.select(statement,values);if(!changed){changed=true;await request({op:'close'});}return rows;}},b.files,companyId),/STALE/);
+ primary=await open('primary');assert.deepEqual((await primary.backup()).tables,original.tables);
  await request({op:'close'});
  console.error('PASS native authoring, SDS, events, trash/restore, Bulk restart, A/B isolation and backup v2 round trip');
  process.exit(0);

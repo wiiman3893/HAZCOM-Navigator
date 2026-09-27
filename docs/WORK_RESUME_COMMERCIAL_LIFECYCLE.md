@@ -1,5 +1,11 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 17 — persisted recovery and real backup concurrency
+
+Recovered checkpoint 16 is now pushed as `25b82a2`; main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. Found that reducer-deleted `paymentFailureAt`/`pendingDowngrade` fields were omitted from Firestore update(), leaving stale stored state. The adapter now explicitly deletes cleared fields and removes them from deadline calculation input. Ordered event versions now also reject backward effective timestamps; exact old-ID replays remain no-ops. Core tests pass 13/13 plus runner; Firebase 23/23 includes repeated failure IDs, fixed deadline, persisted recovery, stale-copy rejection and a subsequent legitimate new failure. One core expectation initially failed because the new stale-time guard rejects earlier than the old early-renewal guard; the expected denial was updated and rerun passed.
+
+Expanded the actual JavaScript→native SQLite round-trip test with deterministic hooks for authoring during row reads, SDS replacement during file reads, Trash→restore during export (including an ABA change), and shutdown after the first query. Exports fail explicitly rather than returning mixed packages; retry validates, and primary remains unchanged. Focused native bridge test passes. No deployment/real cloud mutation; frozen/setup/main unchanged. Next: deterministic permutation matrix, publication isolation decision, selector/restart acceptance, final capability/path audit and broad regression. No integration readiness claim.
+
 ## Continuation checkpoint 16 — recovered interrupted audit work
 
 New continuation started at local/remote task `6c625077c106f32eaf6bf23ed0362be3a6e1f3f6`; freshly fetched main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. Ten uncommitted files were recovered; no staged changes or unpushed commits. The prior combined tool call was stopped by usage exhaustion before either the checkpoint-16 note or Git commit executed. This note reconstructs that missing record; no completed work was recreated.

@@ -146,6 +146,7 @@ export function applyBillingEvent(state:CommercialState,event:BillingEvent,catal
  }
  if(event.version!==state.lastVersion+1)throw Error('Out-of-order billing event');
  const when=new Date(event.effectiveAt);if(!Number.isFinite(when.getTime()))throw Error('Invalid event time');
+ if(state.audit.some(prior=>Date.parse(prior.at)>when.getTime()))throw Error('Stale billing event effective time');
  const current=resolveCommercial(state as unknown as Record<string,unknown>,when.getTime(),catalog);
  if(event.type==='subscription_started'&&current.plan!=='demo')throw Error('Subscription already started');
  if(event.type==='subscription_upgrade'&&current.plan===null)throw Error('Unknown subscription to upgrade');
