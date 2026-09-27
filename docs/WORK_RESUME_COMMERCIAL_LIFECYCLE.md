@@ -1,5 +1,11 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 12 — actual native authoring/backup proof (2026-09-27)
+
+Checkpoint 11 is committed/pushed as `7074c2d`. New test-only pipe bridge runs the real JavaScript authoring, publication projection and backup services against the actual Rust workspace SQL/file/session implementation (disposable SQLite, no cloud). It creates all eight authoring entities, owned SDS, Training/SDS Verification/HazCom Review events, exports primary, restores A, edits A, trashes/restores a placement, replaces SDS, persists a Bulk review session across close/reopen, exports A, restores B and compares every backup table and SDS payload plus publication datasets. B edits remain absent from A; primary tables/SDS remain byte-for-byte equivalent at the logical export level.
+
+This uncovered a real defect missed by legacy fixtures: restore statement validation rejected `sha256` column names because digits were excluded. Fixed the identifier grammar without allowing punctuation or SQL expressions. Initial native scenario failed on that error; rerun passed. Final sync tests 9/9 and native tests 10/10 passed. The current backup v2 contract deliberately omits unfinished Bulk review sessions; the new test proves local restart persistence and that omission, and the UI now states the boundary explicitly. This is not native visual acceptance or live authentication proof. Hosted cutoff, commercial races, async audit, diagnostics and final broad regression remain pending. Cloud/main/frozen/setup state unchanged.
+
 ## Continuation checkpoint 11 — recovered frontend/native routing (2026-09-27)
 
 Recovered starting task/remote task `ed369561623d64f3214d023cfd163e00ff08e96c`; fetched main remains `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. Eleven uncommitted routing files were preserved. The interrupted App/workspace patch had not executed: automatic review could not run because the usage allowance expired, not because the action was determined unsafe. Smaller read-only UI/native changes were applied normally and verified.

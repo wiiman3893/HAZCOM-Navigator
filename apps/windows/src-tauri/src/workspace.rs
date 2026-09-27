@@ -210,6 +210,36 @@ async fn read_pdf(state:&WorkspaceState,token:String,relative_path:String)->Resu
 #[cfg(test)]
 mod tests {
  use super::*;
+ #[tokio::test]
+ async fn javascript_authoring_and_backup_round_trip_through_native_sessions(){
+  use std::io::{BufRead,BufReader,Write};
+  use std::process::{Command,Stdio};
+  let root=std::env::temp_dir().join(format!("hazcom-roundtrip-{:016x}",rand::random::<u64>()));
+  let config=root.join("config");let data=root.join("data");let state=WorkspaceState::default();
+  let script=Path::new(env!("CARGO_MANIFEST_DIR")).join("../test/native-workspace-scenario.mjs");
+  let mut child=Command::new("node").arg(script).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit()).spawn().unwrap();
+  let mut input=child.stdin.take().unwrap();let output=BufReader::new(child.stdout.take().unwrap());
+  for line in output.lines(){
+   let request:Value=serde_json::from_str(&line.unwrap()).unwrap();
+   let string=|key:&str|request[key].as_str().unwrap().to_string();
+   let result:Result<Value,String>=async {match request["op"].as_str().unwrap(){
+    "activate"=>Ok(serde_json::to_value(activate(&state,&config,&data,"synthetic-account","roundtrip-company",&string("id")).await?).unwrap()),
+    "select"=>Ok(Value::Array(select(&state,string("token"),string("statement"),request["values"].as_array().unwrap().clone()).await?)),
+    "batch"=>{batch(&state,string("token"),serde_json::from_value(request["statements"].clone()).unwrap()).await?;Ok(Value::Null)},
+    "stage"=>Ok(Value::String(store_pdf(&state,string("token"),string("company"),string("id"),serde_json::from_value(request["bytes"].clone()).unwrap(),request["import"].as_bool().unwrap_or(false)).await?)),
+    "read"=>Ok(serde_json::to_value(read_pdf(&state,string("token"),string("path")).await?).unwrap()),
+    "restore"=>{let plan:Plan=serde_json::from_value(request["plan"].clone()).unwrap();crate::backup_restore::restore_to_workspace(&data.join("restored-workspaces"),string("id"),plan.company_id,plan.manifest,plan.statements,plan.files).await?;Ok(Value::Null)},
+    "close"=>{if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}Ok(Value::Null)},
+    _=>Err("Unknown test bridge operation".into())
+   }}.await;
+   let response=match result{Ok(value)=>serde_json::json!({"value":value}),Err(error)=>serde_json::json!({"error":error})};
+   writeln!(input,"{}",response).unwrap();input.flush().unwrap();
+  }
+  let status=child.wait().unwrap();
+  if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
+  let resolved=root.canonicalize().unwrap();assert!(resolved.starts_with(std::env::temp_dir().canonicalize().unwrap()));fs::remove_dir_all(resolved).unwrap();
+  assert!(status.success(),"JavaScript/native authoring scenario failed");
+ }
  use crate::backup_restore::{RestoreManifest,RestoreStatement,RestoreFile,restore_to_root};
  #[derive(Deserialize)]
  #[serde(rename_all="camelCase")]

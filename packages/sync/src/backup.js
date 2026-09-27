@@ -113,7 +113,7 @@ export async function importCompanyBackup(packageData,sql,files){
 
 function restoreStatements(tables,prepared){
  const statements=[];
- const append=(table,rows)=>{for(const row of rows){const keys=Object.keys(row);need(keys.length>0&&keys.every(k=>/^[a-z_]+$/i.test(k)),'Invalid backup column');statements.push({statement:`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(()=>'?').join(',')})`,values:keys.map(k=>row[k])});}};
+ const append=(table,rows)=>{for(const row of rows){const keys=Object.keys(row);need(keys.length>0&&keys.every(k=>/^[a-z_][a-z0-9_]*$/i.test(k)),'Invalid backup column');statements.push({statement:`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(()=>'?').join(',')})`,values:keys.map(k=>row[k])});}};
  append('company',tables.company);
  for(const [kind] of entitySpec){append(kind,tables[kind]);append(`${kind}__ownership`,tables[`${kind}__ownership`]);}
  for(const [table] of links)append(table,tables[table]);
