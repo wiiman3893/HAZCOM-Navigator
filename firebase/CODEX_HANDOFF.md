@@ -1,6 +1,8 @@
 # Codex handoff — Firebase checkpoint
 
-## Undeployed convergence task branch — September 27, 2026
+## Integrated source, undeployed commercial convergence — September 27, 2026
+
+The validated implementation was integrated into remote main at `3a0c1de617f200f3aa237573b4347d0ed0c735a3`; the closeout afterward changes documentation only. Final six-group regression passed at `diagnostics/output/20260927T223956`. No cloud deployment or data mutation occurred. See `docs/COMMERCIAL_WORKSPACE_CLOSURE.md`.
 
 Current continuation is tracked in `docs/WORK_RESUME_COMMERCIAL_LIFECYCLE.md`. The milestone began from `30fa9fd2ca6d46d1892259340c165b3e7ff57157`; consult the resume document for exact integration state. Commercial task source is not deployed. Hosted published content now uses transactionally maintained Membership deadlines in source, with a 24-test emulator suite. Both SDS schemas stop reads at the grace/release deadline independently of cleanup. Existing real Memberships require a separately authorized backfill/index/rules/Functions rollout. Released Pro seat removal and release-to-takeover capacity accounting are fixed. All six release/takeover/seat-removal orderings, repeated failure/recovery and persisted billing-field cleanup are tested. Windows restored publication is enabled after actual native SQLite/Firebase-emulator acceptance; access refresh reopens the same workspace in the new effective mode and fails closed. The September 25 paragraph below is historical; later live evidence is documented in `docs/FIREBASE_SCHEMA2_DEPLOYMENT_HANDOFF.md`. No new live acceptance was performed in this continuation.
 

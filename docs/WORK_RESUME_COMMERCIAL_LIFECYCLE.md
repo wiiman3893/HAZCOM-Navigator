@@ -1,5 +1,13 @@
 # Commercial lifecycle convergence work resume
 
+## FINAL — milestone integrated; no continuation work pending
+
+Remote main was fast-forwarded from `30fa9fd2ca6d46d1892259340c165b3e7ff57157` to validated implementation checkpoint `3a0c1de617f200f3aa237573b4347d0ed0c735a3`. A fresh fetch and remote ref read verified the exact intended SHA. Origin/main had not advanced, so reconciliation was unnecessary. The task branch remains intact and pushed. This documentation-only closeout follows the implementation commit on both branches.
+
+All required automated validation passed; final full report is `diagnostics/output/20260927T223956` (six PASS groups; WARN only for four explicitly unverified live probes). Native all-target 11, browser 10, publication/lifecycle 12, and integrated restored publication passed. Bounded audits are complete; no known corruption, Company/workspace isolation, or authority blocker remains within the reviewed milestone. See [complete closure report](COMMERCIAL_WORKSPACE_CLOSURE.md) for fixes, commands, audit evidence and limitations.
+
+No deployment, real Firebase write, billing action, frozen/archive change or setup-script edit occurred. The older canonical checkout contains pre-existing local changes and was deliberately not switched or overwritten. The task checkout is the validated source. Next frontier, only as a separately authorized task: development rollout/backfill rehearsal and live security/native acceptance. Do not claim production commercial rollout, fresh signed-in native visual acceptance, or the four live-security denials. Earlier checkpoint sections below are historical, not remaining work.
+
 ## Closure checkpoint 21 — final validation and bounded audits complete
 
 Access-refresh fix is pushed as `8b447521316010bf32013f3c22c8823dc82ded46`. Bounded whole-diff review additionally fixed zero-SDS restore activation and unknown/null subscription read/export elevation under ending coverage. Export now follows authoritative Company capability. The first broad run exposed an intermittent shared Firebase fixture failure; its exact 14-day entitlement used two clock reads. A deterministic 1 ms reproduction proved that fixture could exceed the strict grace limit. One timestamp fixes the fixture without weakening production policy.

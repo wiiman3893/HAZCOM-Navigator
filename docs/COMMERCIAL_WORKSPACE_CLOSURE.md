@@ -1,6 +1,6 @@
 # Commercial/workspace convergence closure
 
-Integration status: validated and ready for non-destructive main integration. No deployment or real Firebase mutation.
+Integration status: **integrated into remote main** by normal fast-forward from `30fa9fd2ca6d46d1892259340c165b3e7ff57157` to validated implementation commit `3a0c1de617f200f3aa237573b4347d0ed0c735a3`. Fetch and remote ref verification confirmed that exact SHA. Origin/main had not advanced; no merge reconciliation or force-push was needed. This subsequent documentation-only closeout is retained on both main and the task branch; resolve their tips for the documentation commit. No deployment or real Firebase mutation.
 
 ## Recovered state
 

@@ -1,6 +1,8 @@
 # Implementation status
 
-## Commercial lifecycle and backup convergence — isolated task branch
+## Commercial lifecycle and backup convergence — integrated source milestone
+
+Integrated into remote main at validated implementation commit `3a0c1de617f200f3aa237573b4347d0ed0c735a3`, followed by documentation-only closeout. See [closure report](COMMERCIAL_WORKSPACE_CLOSURE.md). The task branch remains intact; nothing was deployed.
 
 The `work/commercial-lifecycle-convergence-2026-09-26` milestone starts from main `30fa9fd2ca6d46d1892259340c165b3e7ff57157`. Windows selects distinct restored workspaces through native token-bound SQLite/file sessions. Authoring, SDS, Bulk source files, backup and publication use the selected workspace. Restored publication is enabled after integrated native/Firebase-emulator proof of separate journals, fingerprints, SDS, retries and switch exclusion. Native tests prove primary → backup → restore A → edit → backup → restore B with full logical/SDS comparison. Invalid ordinary selections preserve the active session; permission-mode changes instead close the old session first and fail closed. A corrupt preference registry permits an unsaved primary startup without overwriting the registry. Backup v2 excludes unfinished Bulk review sessions, stated in the UI. No cloud deployment is part of this milestone.
 
