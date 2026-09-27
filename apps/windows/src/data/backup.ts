@@ -2,7 +2,7 @@ import {invoke} from '@tauri-apps/api/core';
 import {exportCompanyBackup,prepareNativeCompanyRestore} from '@hazcom/sync/backup';
 import {doc,getDocFromServer} from 'firebase/firestore';
 import {auth,db as cloud,call,verifyCompany} from '../auth/firebase';
-import {openDatabase} from './database';
+import {openDatabase,pinWorkspace} from './database';
 import {enforcePublicationLimits,type Capabilities} from '@hazcom/core';
 
 interface CoverageStatus {capabilities:{canExportBackup:boolean};status:string;}
@@ -16,6 +16,8 @@ export async function exportWindowsCompanyBackup(uid:string,companyId:string){
   if(!coverage.capabilities.canExportBackup||coverage.status==='expired')throw Error('Company backup is not available under current coverage.');
  };
  await authorize();
+ const release=pinWorkspace();
+ try{
  const db=await openDatabase();
  if(db.lease.companyId!==companyId)throw Error('WORKSPACE_COMPANY_MISMATCH');
  const packageData=await exportCompanyBackup(
@@ -25,6 +27,7 @@ export async function exportWindowsCompanyBackup(uid:string,companyId:string){
  );
  await authorize();
  return packageData;
+ }finally{release();}
 }
 
 /** Native import into a separate fresh Company workspace; existing authoring data is never merged. */

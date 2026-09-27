@@ -11,6 +11,20 @@ import {REPLICA_SCHEMA_SQL} from '../src/sqlite.js';
 import {InMemoryBackupDelivery} from '@hazcom/core';
 const migration=await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8');
 
+test('backup rejects authoring and Company metadata changes during SDS reads',async()=>{
+ const source=await fixture('small','backup-race');source.sql.db.exec(migration);
+ try{
+  for(const mutate of [
+   ()=>source.sql.db.prepare('INSERT INTO authoring_versions(company_id,version) VALUES (?,1)').run(source.company.id),
+   ()=>source.sql.db.prepare("UPDATE company SET name='Changed during export' WHERE id=?").run(source.company.id)
+  ]){
+   let changed=false;
+   await assert.rejects(exportCompanyBackup(source.sql,{read:async path=>{if(!changed){changed=true;mutate();}return source.files.read(path);}},source.company.id),/changed during backup/);
+  }
+  assert.equal((await exportCompanyBackup(source.sql,source.files,source.company.id)).tables.company[0].name,'Changed during export');
+ }finally{source.sql.close();}
+});
+
 test('versioned Company backup restores structured history and SDS into an independent SQLite database',async()=>{
  const source=await fixture('small','backup-source');source.sql.db.exec(migration);
  source.sql.db.prepare('UPDATE work_area SET deleted_at=? WHERE id=?').run('2026-09-01T00:00:00Z','area-0000');

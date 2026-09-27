@@ -3,6 +3,7 @@ import {doc,getDocFromServer} from 'firebase/firestore';
 import { auth,call,db as cloud,verifyCompany, type CompanyAccess } from '../auth/firebase';
 import {verifyWindowsSdsIntegrity} from './publication-integrity';
 import {buildPublication} from '@hazcom/sync';
+import {WorkspaceLifecycle} from './workspace-lifecycle';
 
 export type WorkspaceLease={workspaceId:string;companyId:string;token:string;readOnly:boolean};
 export type WorkspaceEntry={workspaceId:string;companyId:string;kind:string;available:boolean;reason:string|null};
@@ -19,10 +20,8 @@ export class WorkspaceDatabase {
 }
 let active:WorkspaceDatabase|null=null;
 let owner:string|null=null;
-let generation=0;
-let transition:Promise<unknown>=Promise.resolve();
-let pinned=0;
-export function pinWorkspace(){if(!active)throw Error('Workspace is not open.');pinned++;let released=false;return()=>{if(!released){released=true;pinned--;}};}
+const lifecycle=new WorkspaceLifecycle();
+export function pinWorkspace(){if(!active)throw Error('Workspace is not open.');return lifecycle.pin();}
 export function activeWorkspace(){return active?.lease??null;}
 export async function openDatabase():Promise<WorkspaceDatabase>{if(!active)throw Error('Workspace is not open.');return active;}
 async function authorize(uid:string,companyId:string){
@@ -32,19 +31,16 @@ async function authorize(uid:string,companyId:string){
  return !coverage.capabilities.canAuthor;
 }
 export async function selectWorkspace(uid:string,companyId:string,workspaceId:string):Promise<WorkspaceDatabase>{
- const run=generation;
- const work=transition.catch(()=>{}).then(async()=>{
-  if(pinned)throw Error('Finish the active backup or publication before switching workspaces.');
+ return lifecycle.change(async run=>{
   const readOnly=await authorize(uid,companyId);
-  if(run!==generation)throw Error('Workspace access changed.');
-  if(pinned)throw Error('Finish the active backup or publication before switching workspaces.');
+  if(run!==lifecycle.generation)throw Error('Workspace access changed.');
   const lease=await invoke<WorkspaceLease>('activate_workspace',{accountId:uid,companyId,workspaceId,readOnly});
-  if(run!==generation){await invoke('close_workspace');throw Error('Workspace access changed.');}
+  if(run!==lifecycle.generation){await invoke('close_workspace');throw Error('Workspace access changed.');}
   active=new WorkspaceDatabase(lease);owner=uid;return active;
- });transition=work;return work;
+ });
 }
 export async function ensureWorkspace(uid:string,companyId:string):Promise<{database:WorkspaceDatabase;notice:string|null}>{
- await transition.catch(()=>{});
+ await lifecycle.settled();
  if(active&&owner===uid&&active.lease.companyId===companyId)return {database:active,notice:null};
  const remembered=await invoke<string|null>('remembered_workspace',{accountId:uid,companyId});
  try{return {database:await selectWorkspace(uid,companyId,remembered??'primary'),notice:null};}
@@ -85,8 +81,8 @@ export async function getDashboardCounts(uid: string, company: CompanyAccess): P
 }
 
 export async function closeWorkspace(): Promise<void> {
-  ++generation;active=null;owner=null;
-  const work=transition.catch(()=>{}).then(()=>invoke<void>('close_workspace'));transition=work;await work;
+  active=null;owner=null;
+  await lifecycle.close(()=>invoke<void>('close_workspace'));
 }
 
 // One Company-scoped SELECT; managed file reader is bounded to app attachments.

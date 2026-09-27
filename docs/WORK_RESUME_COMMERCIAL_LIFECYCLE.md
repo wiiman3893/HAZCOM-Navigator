@@ -1,5 +1,11 @@
 # Commercial lifecycle convergence work resume
 
+## Continuation checkpoint 13 — switch/export async guards (2026-09-27)
+
+Checkpoint 12 is pushed as `205ccca`. Fixed a race where publication could pin the old workspace after a switch had already entered native activation. `WorkspaceLifecycle` now marks transitions pending synchronously, serializes switches, excludes pins during transitions, rejects switches during pinned operations and allows security shutdown to invalidate pending generations. Backup export also pins the workspace. Added three deterministic race tests to the normal Windows publication test command; all pass. Windows build passes.
+
+Backup now checks authoring version and Company metadata before/after gathering tables/SDS, rejecting a mixed export when edits happen during download. Regression injects both version and Company-name changes: backup tests 4/4, all native tests 10/10. No cloud changes. Main remains unchanged. Next: adversarial restored-workspace corruption/restart tests, hosted-read cutoff, Pro release/inheritance races, diagnostics and broad regression. The cutoff is still a policy decision only; do not claim rules enforcement.
+
 ## Continuation checkpoint 12 — actual native authoring/backup proof (2026-09-27)
 
 Checkpoint 11 is committed/pushed as `7074c2d`. New test-only pipe bridge runs the real JavaScript authoring, publication projection and backup services against the actual Rust workspace SQL/file/session implementation (disposable SQLite, no cloud). It creates all eight authoring entities, owned SDS, Training/SDS Verification/HazCom Review events, exports primary, restores A, edits A, trashes/restores a placement, replaces SDS, persists a Bulk review session across close/reopen, exports A, restores B and compares every backup table and SDS payload plus publication datasets. B edits remain absent from A; primary tables/SDS remain byte-for-byte equivalent at the logical export level.

@@ -66,6 +66,7 @@ export async function validateCompanyBackup(packageData){
 /** Node/dev adapter. Export is scoped by ownership, never by an unqualified table dump. */
 export async function exportCompanyBackup(sql,files,companyId){
  need(validId(companyId),'Invalid Company ID');
+ const versionBefore=await sql.select('SELECT * FROM authoring_versions WHERE company_id=?',[companyId]);
  const companies=await sql.select('SELECT * FROM company WHERE id=?',[companyId]);need(companies.length===1,'Company missing');
  const tables={company:companies},ids={company:[companyId]};
  for(const [kind,parent] of entitySpec){
@@ -90,6 +91,9 @@ export async function exportCompanyBackup(sql,files,companyId){
  const recordHash=await digest(new TextEncoder().encode(JSON.stringify(tables)));
  validateRelationships(tables,companyId);
  const attachmentHash=await digest(new TextEncoder().encode(JSON.stringify(attachmentDescriptors(attachments))));
+ const versionAfter=await sql.select('SELECT * FROM authoring_versions WHERE company_id=?',[companyId]);
+ const companyAfter=await sql.select('SELECT * FROM company WHERE id=?',[companyId]);
+ need(JSON.stringify(versionBefore)===JSON.stringify(versionAfter)&&JSON.stringify(companies)===JSON.stringify(companyAfter),'Company changed during backup. Retry after authoring finishes.');
  return {manifest:{format:'hazcom-company-backup',version:2,schemaVersion:3,companyId,recordHash,attachmentHash,attachmentCount:attachments.length,createdAt:new Date().toISOString()},tables,attachments};
 }
 
