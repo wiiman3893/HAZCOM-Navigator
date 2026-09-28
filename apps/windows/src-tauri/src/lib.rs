@@ -2,6 +2,8 @@ mod publication_files;
 mod browser_auth;
 mod backup_restore;
 mod workspace;
+mod diagnostics;
+use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 fn migrations() -> Vec<Migration> {
@@ -26,9 +28,12 @@ fn migrations() -> Vec<Migration> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(diagnostics::setup)
         .manage(workspace::WorkspaceState::default())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            diagnostics::diagnostic_status,diagnostics::diagnostic_start,diagnostics::diagnostic_events,
+            diagnostics::diagnostic_mark,diagnostics::diagnostic_stop,diagnostics::diagnostic_export,diagnostics::diagnostic_open_exports,
             browser_auth::google_browser_sign_in,
             backup_restore::restore_company_backup,
             backup_restore::inspect_restored_company_backup
@@ -36,8 +41,9 @@ pub fn run() {
             workspace::close_workspace,workspace::workspace_select,workspace::workspace_batch,
             workspace::workspace_store_pdf,workspace::workspace_read_pdf,workspace::workspace_journal
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running HazCom Navigator");
+        .build(tauri::generate_context!())
+        .expect("error while running HazCom Navigator")
+        .run(|app,event| {if matches!(event,tauri::RunEvent::Exit){let _=app.state::<diagnostics::Diagnostics>().stop(true);}});
 }
 
 #[cfg(test)]
