@@ -16,6 +16,7 @@ export class WorkspaceDatabase {
  files={
   stage:(companyId:string,id:string,bytes:Uint8Array)=>invoke<string>('workspace_store_pdf',{token:this.lease.token,companyId,id,bytes:Array.from(bytes),importSource:false}),
   stageImport:(companyId:string,id:string,bytes:Uint8Array)=>invoke<string>('workspace_store_pdf',{token:this.lease.token,companyId,id,bytes:Array.from(bytes),importSource:true}),
+  materialize:async(sessionId:string,startPage:number,endPage:number)=>{const result=await invoke<{bytes:number[];sha256:string;sizeBytes:number;pageCount:number;materializationVersion:number}>('workspace_materialize_sds_pdf',{token:this.lease.token,sessionId,startPage,endPage});return {...result,bytes:new Uint8Array(result.bytes)};},
   read:async(relativePath:string)=>new Uint8Array(await invoke<number[]>('workspace_read_pdf',{token:this.lease.token,relativePath}))
  };
 }

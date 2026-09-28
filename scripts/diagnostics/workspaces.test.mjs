@@ -13,7 +13,7 @@ test('workspace diagnostics are read-only, distinguish remembered selection and 
  const root=await mkdtemp(path.join(tmpdir(),'hazcom-workspace-diagnostic-'));
  const active=path.join(root,'restored-workspaces','copy-a','active');await mkdir(active,{recursive:true});
  const plan=JSON.parse(await readFile(new URL('../../apps/windows/test/native-restore-plan.json',import.meta.url),'utf8'));
- const migrations=await Promise.all(['003_authoring.sql','004_bulk_sds_import.sql','005_bulk_sds_extraction.sql'].map(name=>readFile(new URL('../../database/migrations/'+name,import.meta.url),'utf8')));
+ const migrations=await Promise.all(['003_authoring.sql','004_bulk_sds_import.sql','005_bulk_sds_extraction.sql','006_bulk_sds_materialization.sql'].map(name=>readFile(new URL('../../database/migrations/'+name,import.meta.url),'utf8')));
  const databaseFile=path.join(active,'workspace.db'),sql=nodeSqlite(databaseFile,REPLICA_SCHEMA_SQL+migrations.join('\n'));
  await sql.batch(plan.statements);sql.close();
  const fileRoot=path.join(active,'attachments',plan.companyId);await mkdir(fileRoot,{recursive:true});

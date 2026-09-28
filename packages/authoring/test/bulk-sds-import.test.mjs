@@ -11,6 +11,7 @@ import {REPLICA_SCHEMA_SQL} from '../../sync/src/sqlite.js';
 const migration3=await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8');
 const migration4=await readFile(new URL('../../../database/migrations/004_bulk_sds_import.sql',import.meta.url),'utf8');
 const migration5=await readFile(new URL('../../../database/migrations/005_bulk_sds_extraction.sql',import.meta.url),'utf8');
+const migration6=await readFile(new URL('../../../database/migrations/006_bulk_sds_materialization.sql',import.meta.url),'utf8');
 function pdf(pages){
  const objects=['1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj'];
  const kids=[];
@@ -80,7 +81,8 @@ test('image-only PDF is imported as OCR-required and remains manually splittable
 });
 
 async function setup(){
- const folder=await mkdtemp(path.join(tmpdir(),'hazcom-bulk-import-'));const sql=nodeSqlite(path.join(folder,'author.db'),REPLICA_SCHEMA_SQL+migration3+migration4+migration5),files=await nodeFiles(path.join(folder,'attachments'));
+ const folder=await mkdtemp(path.join(tmpdir(),'hazcom-bulk-import-'));const sql=nodeSqlite(path.join(folder,'author.db'),REPLICA_SCHEMA_SQL+migration3+migration4+migration5+migration6),files=await nodeFiles(path.join(folder,'attachments'));
+ files.materialize=async(_sessionId,startPage,endPage)=>{const bytes=pdf(Array.from({length:endPage-startPage+1},(_,index)=>`Child page ${startPage+index}`));return {bytes,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,pageCount:endPage-startPage+1,materializationVersion:1};};
  for(const id of ['company-a','company-b'])sql.db.prepare('INSERT INTO company(id,name,contact_email) VALUES (?,?,?)').run(id,id,'safety@example.test');
  const service=companyId=>authoringService({sql,files,companyId,authorize:async()=>({companyId,role:'manager',active:true})});
  return {sql,files,service};
@@ -101,7 +103,20 @@ test('batch session persists source integrity and segmentation across restart wi
   await restarted.reviewSdsImportCandidate(after.sds_import_draft[0].id,{product_name:'Reviewed Cleaner',manufacturer:'Example Maker',sds_date:'2026-09-28',cas_numbers:'67-64-1'});
   const reviewed=await restarted.snapshot(),reviewFields=Object.fromEntries(reviewed.sds_import_field.map(row=>[row.field_name,row]));
   assert.equal(reviewed.sds_import_draft[0].extraction_status,'ready');assert.equal(reviewFields.product_name.reviewed_value,'Reviewed Cleaner');assert.equal(reviewFields.cas_numbers.review_status,'corrected');
+  const candidateDraft=reviewed.sds_import_draft[0];await restarted.approveSdsImportCandidate(candidateDraft.id,{productId:'bulk-product-one',attachmentId:'bulk-sds-one'});
+  const approved=await restarted.snapshot();assert.equal(approved.chemical_product.find(row=>row.id==='bulk-product-one').product_name,'Reviewed Cleaner');assert.equal(approved.attachments.find(row=>row.id==='bulk-sds-one').slot_key,'sds');assert.equal(approved.sds_import_materialization[0].source_start_page,1);assert.equal(approved.sds_import_materialization[0].source_end_page,4);assert.equal(approved.sds_import_draft[0].approval_status,'materialized');
+  assert.equal(await restarted.approveSdsImportCandidate(candidateDraft.id,{productId:'bulk-product-one',attachmentId:'bulk-sds-one'}),'bulk-product-one');
   const other=await f.service('company-b').snapshot();assert.equal(other.sds_import_session.length,0);assert.equal(other.sds_import_draft.length,0);assert.equal(other.sds_import_page.length,0);
   await assert.rejects(f.service('company-b').splitSdsImportDraft('batch-one',after.sds_import_draft[0].id,2),/Company/);
+ }finally{f.sql.close();}
+});
+
+test('failed child PDF verification creates no Product, attachment, or approval',async()=>{
+ const f=await setup();try{
+  const service=f.service('company-a');await service.importSdsBatch(pdf(['Safety Data Sheet SECTION 1 Identification']),'failed.pdf','failed-batch');let snapshot=await service.snapshot(),draft=snapshot.sds_import_draft[0];
+  await service.reviewSdsImportCandidate(draft.id,{product_name:'Failed Cleaner',manufacturer:'Example',sds_date:'2026-09-28',cas_numbers:null});
+  f.files.materialize=async()=>{const bytes=pdf(['child']);return {bytes,sha256:'0'.repeat(64),sizeBytes:bytes.length,pageCount:1,materializationVersion:1};};
+  await assert.rejects(service.approveSdsImportCandidate(draft.id,{productId:'must-not-exist',attachmentId:'must-not-exist-sds'}),/hash mismatch/);
+  snapshot=await service.snapshot();assert.equal(snapshot.chemical_product.some(row=>row.id==='must-not-exist'),false);assert.equal(snapshot.attachments.some(row=>row.id==='must-not-exist-sds'),false);assert.equal(snapshot.sds_import_materialization.length,0);assert.equal(snapshot.sds_import_draft[0].approval_status,'unapproved');
  }finally{f.sql.close();}
 });

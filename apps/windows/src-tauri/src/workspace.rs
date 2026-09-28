@@ -63,7 +63,7 @@ async fn prepare(config:&Path,data:&Path,id:&str,company:&str,read_only:bool)->R
  let pool=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(path).create_if_missing(id=="primary"&&!read_only).read_only(read_only).foreign_keys(true)).await.map_err(|e|e.to_string())?;
  let result=async {
   if !read_only{super::backup_restore::migrator().run(&pool).await.map_err(|e|e.to_string())?;}
-  else {let version:i64=sqlx::query_scalar("SELECT max(version) FROM _sqlx_migrations WHERE success=1").fetch_one(&pool).await.map_err(|e|e.to_string())?;if !(3..=5).contains(&version){return Err("WORKSPACE_SCHEMA_UNSUPPORTED".into());}}
+  else {let version:i64=sqlx::query_scalar("SELECT max(version) FROM _sqlx_migrations WHERE success=1").fetch_one(&pool).await.map_err(|e|e.to_string())?;if !(3..=6).contains(&version){return Err("WORKSPACE_SCHEMA_UNSUPPORTED".into());}}
   let integrity:String=sqlx::query_scalar("PRAGMA integrity_check").fetch_one(&pool).await.map_err(|e|e.to_string())?;
   let broken:i64=sqlx::query_scalar("SELECT count(*) FROM pragma_foreign_key_check").fetch_one(&pool).await.map_err(|e|e.to_string())?;
   if integrity!="ok"||broken!=0{return Err("WORKSPACE_SQLITE_INVALID".to_string());} Ok(())

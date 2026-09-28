@@ -16,15 +16,16 @@ import {redactText,sanitize} from './redact.mjs';
 import {DIAGNOSTIC_SCHEMA_VERSION,assertReportSchema,makeZip,writeBundle} from './report.mjs';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
-async function fixture({includeMigration4=true,includeMigration5=includeMigration4}={}) {
+async function fixture({includeMigration4=true,includeMigration5=includeMigration4,includeMigration6=includeMigration5}={}) {
   const folder=await mkdtemp(path.join(tmpdir(),'hazcom-diagnostic-test-'));
   const databaseFile=path.join(folder,'author.db'),journalFile=path.join(folder,'journal.db'),attachmentRoot=path.join(folder,'attachments');
   const migration3=await readFile(path.resolve('database/migrations/003_authoring.sql'),'utf8');
   const migration4Sql=await readFile(path.resolve('database/migrations/004_bulk_sds_import.sql'),'utf8');
   const migration5Sql=await readFile(path.resolve('database/migrations/005_bulk_sds_extraction.sql'),'utf8');
-  const sql=nodeSqlite(databaseFile,REPLICA_SCHEMA_SQL+migration3+(includeMigration4?migration4Sql:'')+(includeMigration5?migration5Sql:''));
+  const migration6Sql=await readFile(path.resolve('database/migrations/006_bulk_sds_materialization.sql'),'utf8');
+  const sql=nodeSqlite(databaseFile,REPLICA_SCHEMA_SQL+migration3+(includeMigration4?migration4Sql:'')+(includeMigration5?migration5Sql:'')+(includeMigration6?migration6Sql:''));
   sql.db.exec('CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY,description TEXT NOT NULL,installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,success BOOLEAN NOT NULL,checksum BLOB NOT NULL,execution_time BIGINT NOT NULL)');
-  for(const version of [1,2,3,...(includeMigration4?[4]:[]),...(includeMigration5?[5]:[])])sql.db.prepare('INSERT INTO _sqlx_migrations(version,description,success,checksum,execution_time) VALUES(?,?,1,?,0)').run(version,`fixture_${version}`,Buffer.alloc(48));
+  for(const version of [1,2,3,...(includeMigration4?[4]:[]),...(includeMigration5?[5]:[]),...(includeMigration6?[6]:[])])sql.db.prepare('INSERT INTO _sqlx_migrations(version,description,success,checksum,execution_time) VALUES(?,?,1,?,0)').run(version,`fixture_${version}`,Buffer.alloc(48));
   sql.db.prepare('INSERT INTO company(id,name,contact_email) VALUES (?,?,?)').run('company-a','Test Company','test@example.test');
   const files=await nodeFiles(attachmentRoot);
   const author=authoringService({sql,files,companyId:'company-a',authorize:async()=>({companyId:'company-a',role:'manager',active:true}),today:()=> '2026-09-26'});
@@ -73,8 +74,8 @@ test('failed validation command retains bounded diagnostic stderr',async()=>{
 test('read-only SQLite collector checks schema, relationships, SDS, and leaves DB unchanged',async()=>{
   const f=await fixture(),before=hash(await readFile(f.databaseFile));
   const result=await collectSqlite(f);
-  assert.equal(result.sqlite.status,'PASS');assert.equal(result.sqlite.schemaVersion,5);
-  assert.equal(result.sqlite.expectedSourceSchemaVersion,5);assert.equal(result.sqlite.sdsImportSessions,0);
+  assert.equal(result.sqlite.status,'PASS');assert.equal(result.sqlite.schemaVersion,6);
+  assert.equal(result.sqlite.expectedSourceSchemaVersion,6);assert.equal(result.sqlite.sdsImportSessions,0);
   assert.equal(result.sqlite.counts.chemical_product,1);assert.equal(result.sds.status,'PASS');
   assert.equal(result.authoring.relationshipValidation.startsWith('PASS'),true);
   assert.equal(result.publication.journal.attempt.revisionId,'revision-a');
@@ -84,7 +85,7 @@ test('read-only SQLite collector checks schema, relationships, SDS, and leaves D
   assert.throws(()=>db.exec("INSERT INTO company(id,name,contact_email) VALUES ('bad','Bad','bad@example.test')"));db.close();
 });
 
-test('schema-5 diagnostic reports migrated Bulk SDS session state without modifying the database',async()=>{
+test('schema-6 diagnostic reports migrated Bulk SDS session state without modifying the database',async()=>{
   const f=await fixture(),sessionId='session-a';
   const db=new DatabaseSync(f.databaseFile);
   db.prepare('INSERT INTO sds_import_session(id,company_id,source_filename,managed_source_path,source_sha256,source_size_bytes,page_count,imported_at,status) VALUES(?,?,?,?,?,?,?,?,?)')
@@ -93,18 +94,18 @@ test('schema-5 diagnostic reports migrated Bulk SDS session state without modify
   db.prepare('INSERT INTO sds_import_draft(id,session_id,ordinal,start_page,end_page,confidence,reason,status) VALUES(?,?,1,1,1,\'uncertain\',\'Fixture\',\'review\')').run('draft-a',sessionId);
   db.close();
   const before=hash(await readFile(f.databaseFile)),result=await collectSqlite(f);
-  assert.equal(result.sqlite.schemaVersion,5);assert.equal(result.sqlite.expectedSourceSchemaVersion,5);
+  assert.equal(result.sqlite.schemaVersion,6);assert.equal(result.sqlite.expectedSourceSchemaVersion,6);
   assert.equal(result.sqlite.migrationPending,false);assert.equal(result.sqlite.status,'PASS');
   assert.equal(result.sqlite.sdsImportSessions,1);assert.deepEqual(result.sqlite.sdsImportSessionStates,{review:1});
   assert.equal(result.authoring.status,'PASS');assert.equal(result.authoring.relationshipValidation.startsWith('PASS'),true);
   assert.equal(hash(await readFile(f.databaseFile)),before);
 });
 
-test('migration-3 database under migration-5 source remains readable without changing schema',async()=>{
-  const f=await fixture({includeMigration4:false,includeMigration5:false}),before=hash(await readFile(f.databaseFile));
+test('migration-3 database under migration-6 source remains readable without changing schema',async()=>{
+  const f=await fixture({includeMigration4:false,includeMigration5:false,includeMigration6:false}),before=hash(await readFile(f.databaseFile));
   const result=await collectSqlite(f);
   assert.equal(result.sqlite.status,'WARN');assert.equal(result.sqlite.schemaVersion,3);
-  assert.equal(result.sqlite.expectedSourceSchemaVersion,5);assert.equal(result.sqlite.migrationPending,true);
+  assert.equal(result.sqlite.expectedSourceSchemaVersion,6);assert.equal(result.sqlite.migrationPending,true);
   assert.equal(result.authoring.status,'WARN');assert.equal(result.authoring.relationshipValidation.startsWith('PASS'),true);
   assert.equal(result.sqlite.counts.chemical_product,1);assert.equal(result.sqlite.trashCounts.chemical_product,0);
   assert.equal(result.sds.status,'PASS');assert.equal(result.publication.status,'WARN'); // Synthetic journal is intentionally pending.

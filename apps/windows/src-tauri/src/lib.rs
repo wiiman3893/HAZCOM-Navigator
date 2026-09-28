@@ -3,6 +3,7 @@ mod browser_auth;
 mod backup_restore;
 mod workspace;
 mod diagnostics;
+mod sds_pdf;
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -23,6 +24,7 @@ fn migrations() -> Vec<Migration> {
         Migration { version: 3, description: "local_authoring", sql: include_str!("../../../../database/migrations/003_authoring.sql"), kind: MigrationKind::Up },
         Migration { version: 4, description: "bulk_sds_import", sql: include_str!("../../../../database/migrations/004_bulk_sds_import.sql"), kind: MigrationKind::Up },
         Migration { version: 5, description: "bulk_sds_extraction", sql: include_str!("../../../../database/migrations/005_bulk_sds_extraction.sql"), kind: MigrationKind::Up },
+        Migration { version: 6, description: "bulk_sds_materialization", sql: include_str!("../../../../database/migrations/006_bulk_sds_materialization.sql"), kind: MigrationKind::Up },
     ]
 }
 
@@ -40,7 +42,8 @@ pub fn run() {
             backup_restore::inspect_restored_company_backup
             ,workspace::activate_workspace,workspace::remembered_workspace,workspace::list_workspaces,
             workspace::close_workspace,workspace::workspace_select,workspace::workspace_batch,
-            workspace::workspace_store_pdf,workspace::workspace_read_pdf,workspace::workspace_journal
+            workspace::workspace_store_pdf,workspace::workspace_read_pdf,workspace::workspace_journal,
+            sds_pdf::workspace_materialize_sds_pdf
         ])
         .build(tauri::generate_context!())
         .expect("error while running HazCom Navigator")
@@ -134,7 +137,7 @@ mod migration_acceptance {
     }
 
     #[tokio::test]
-    async fn schema_three_upgrade_through_five_is_transactional_idempotent_and_preserves_authoring_rows() {
+    async fn schema_three_upgrade_through_six_is_transactional_idempotent_and_preserves_authoring_rows() {
         let copied_database = std::env::var_os("HAZCOM_SCHEMA3_FIXTURE_DB").map(PathBuf::from);
         let options = if let Some(path) = copied_database.as_ref() {
             SqliteConnectOptions::new().filename(path).foreign_keys(true).create_if_missing(false)
@@ -199,11 +202,11 @@ mod migration_acceptance {
             .fetch_one(&pool).await.unwrap();
         assert_eq!(version, 3);
 
-        migrator(5).run(&pool).await.expect("apply schema 4 and 5 migrations");
+        migrator(6).run(&pool).await.expect("apply schema 4 through 6 migrations");
         let version: i64 = sqlx::query_scalar("SELECT max(version) FROM _sqlx_migrations WHERE success=1")
             .fetch_one(&pool).await.unwrap();
-        assert_eq!(version, 5);
-        for table in ["sds_import_session", "sds_import_page", "sds_import_draft", "sds_import_page_text", "sds_import_candidate_review", "sds_import_section", "sds_import_field"] {
+        assert_eq!(version, 6);
+        for table in ["sds_import_session", "sds_import_page", "sds_import_draft", "sds_import_page_text", "sds_import_candidate_review", "sds_import_section", "sds_import_field", "sds_import_materialization"] {
             let found: i64 = sqlx::query_scalar("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?")
                 .bind(table).fetch_one(&pool).await.unwrap();
             assert_eq!(found, 1, "missing {table}");
@@ -230,11 +233,11 @@ mod migration_acceptance {
         assert_eq!(integrity, "ok");
 
         // The plugin keeps its migration ledger and rerunning its migrator is a no-op.
-        migrator(5).run(&pool).await.expect("reopen schema 5 fixture");
+        migrator(6).run(&pool).await.expect("reopen schema 6 fixture");
         let version: i64 = sqlx::query_scalar("SELECT max(version) FROM _sqlx_migrations WHERE success=1")
             .fetch_one(&pool).await.unwrap();
-        assert_eq!(version, 5);
-        assert_eq!(authoring_counts(&pool).await, before_counts, "reopening schema 5 changed existing rows");
+        assert_eq!(version, 6);
+        assert_eq!(authoring_counts(&pool).await, before_counts, "reopening schema 6 changed existing rows");
         assert_eq!(existing_data_snapshot(&pool).await, before_existing_data, "reopening changed pre-existing SQLite data");
         pool.close().await;
     }

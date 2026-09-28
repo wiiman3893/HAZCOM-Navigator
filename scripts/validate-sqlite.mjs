@@ -11,6 +11,7 @@ const derived = readFileSync(resolve(root, 'database/migrations/002_derived_view
 const authoring = readFileSync(resolve(root, 'database/migrations/003_authoring.sql'), 'utf8');
 const bulkImport = readFileSync(resolve(root, 'database/migrations/004_bulk_sds_import.sql'), 'utf8');
 const bulkExtraction = readFileSync(resolve(root, 'database/migrations/005_bulk_sds_extraction.sql'), 'utf8');
+const bulkMaterialization = readFileSync(resolve(root, 'database/migrations/006_bulk_sds_materialization.sql'), 'utf8');
 const db = new DatabaseSync(':memory:');
 db.exec('PRAGMA foreign_keys = ON;');
 db.exec(schema);
@@ -18,6 +19,7 @@ db.exec(derived);
 db.exec(authoring);
 db.exec(bulkImport);
 db.exec(bulkExtraction);
+db.exec(bulkMaterialization);
 
 const run = (sql, ...params) => db.prepare(sql).run(...params);
 run('INSERT INTO company(id,name,contact_email) VALUES(?,?,?)', 'c1', 'Test Co', 'test@example.com');

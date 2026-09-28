@@ -134,7 +134,7 @@ export async function collectSqlite({databaseFile,journalFile,attachmentRoot,com
     const selected=companySelection(db,requestedCompanyId,journalFile);
     const sourceMigrations=sourceMigrationDir?(await readdir(sourceMigrationDir).catch(()=>[])).map(name=>Number(name.match(/^(\d+)_.*\.sql$/)?.[1])).filter(Number.isInteger):[];
     const expectedSourceSchemaVersion=sourceMigrations.length?Math.max(...sourceMigrations):null;
-    const schemaVersion=migrations.at(-1)?.version??(knownTables.has('sds_import_field')?5:knownTables.has('sds_import_session')?4:knownTables.has('authoring_sds_integrity')?3:knownTables.has('dm_attachments')?1:null);
+    const schemaVersion=migrations.at(-1)?.version??(knownTables.has('sds_import_materialization')?6:knownTables.has('sds_import_field')?5:knownTables.has('sds_import_session')?4:knownTables.has('authoring_sds_integrity')?3:knownTables.has('dm_attachments')?1:null);
     const sqlite={status:integrity.length===1&&integrity[0]==='ok'&&foreignKeys.length===0?'PASS':'FAIL',
       databaseLocation:'<appdata>/hazcom-navigator.db',integrityCheck:integrity.slice(0,10),foreignKeyViolations:foreignKeys,
       userVersion:db.prepare('PRAGMA user_version').get().user_version,migrations,
