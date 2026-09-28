@@ -1,3 +1,4 @@
+import {observe} from '../diagnostics/session';
 import { initializeApp, getApp } from 'firebase/app';
 import { initializeAuth, inMemoryPersistence, GoogleAuthProvider, signInWithCredential, signOut, type Auth } from 'firebase/auth';
 import { collection, doc, getDocFromServer, getDocsFromServer, getFirestore, type Firestore } from 'firebase/firestore';
@@ -15,12 +16,13 @@ export let auth: Auth;
 export let db: Firestore;
 if(!configurationError){const app=initializeApp(firebaseConfig);auth=initializeAuth(app,{persistence:inMemoryPersistence});db=getFirestore(app);}
 export const call=async<T=unknown>(name:string,data:unknown)=>(await httpsCallable<unknown,T>(getFunctions(getApp(),'us-central1'),name)(data)).data;
-export async function signIn(){
+async function signInImpl(){
   if(!isTauri())throw Error('Open the Windows application to sign in with your system browser.');
   const token=await invoke<string>('google_browser_sign_in',{config:firebaseConfig});
   await signInWithCredential(auth,GoogleAuthProvider.credential(token));
 }
-export const signOutAccount=()=>signOut(auth);
+export const signIn=()=>observe('auth.signin',signInImpl);
+export const signOutAccount=()=>observe('auth.signout',()=>signOut(auth));
 export type Role='administrator'|'manager'|'member';
 export interface CompanyAccess {id:string;name:string;contact_email:string;role:Role}
 export interface AccountSession {uid:string;email:string;companies:CompanyAccess[];activeCompanyId:string|null;entitlement:string;canCreate:boolean}

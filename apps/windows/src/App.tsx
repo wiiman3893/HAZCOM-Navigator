@@ -1,3 +1,4 @@
+import {diagnostics,observe} from './diagnostics/session';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, getDocsFromServer, doc, onSnapshot } from 'firebase/firestore';
@@ -25,7 +26,7 @@ function AuthenticatedApp(){
     if(!uid){setSession(null);setCompany(null);setBusy(false);return;}
     setBusy(true);
     try{
-      const next=await loadAccount(uid);
+      const next=await observe('company.access.refresh',()=>loadAccount(uid));
       if(run!==generation.current)return;
       setSession(next);setEmail(next.email);setCompany(next.companies.find(c=>c.id===next.activeCompanyId)??null);
     }catch(e){if(run===generation.current){setSession(null);setCompany(null);setError(message(e));void closeWorkspace();}}
@@ -41,7 +42,7 @@ function AuthenticatedApp(){
   },[refresh]);
   useEffect(()=>{
     if(!session || !company)return;
-    const revoke=()=>{setCompany(null);setError('Company access changed. Refresh your access to continue.');void closeWorkspace();};
+    const revoke=()=>{diagnostics.emit('company.access','revoked');setCompany(null);setError('Company access changed. Refresh your access to continue.');void closeWorkspace();};
     const stopMember=onSnapshot(doc(db,'companies',company.id,'memberships',session.uid),snapshot=>{
       if(snapshot.metadata.fromCache)return;
       const data=snapshot.data();if(!data?.active || data.role!==company.role)revoke();
@@ -54,7 +55,7 @@ function AuthenticatedApp(){
     if(!window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))return;
     setCompany(null);await closeWorkspace();
     if(!id)return;
-    await call('setActiveCompany',{companyId:id});await refresh();
+    await observe('company.access',()=>call('setActiveCompany',{companyId:id}),{company:id});await refresh();
   }
   async function create(){creatingId.current??=crypto.randomUUID();await call('createCompany',{companyId:creatingId.current,company:{name:name.trim(),contact_email:email.trim()}}).then(async result=>{await call('setActiveCompany',{companyId:(result as {companyId:string}).companyId});});creatingId.current=null;setName('');await refresh();}
   const controls=<><button disabled={busy} onClick={()=>void refresh()}>Refresh access</button><button disabled={busy} onClick={()=>{if(window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))void action(signOutAccount);}}>Sign out</button></>;

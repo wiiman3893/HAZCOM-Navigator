@@ -1,3 +1,4 @@
+import {diagnostics,observe} from './diagnostics/session';
 import {useEffect,useState} from 'react';
 import {publicationError,type PublicationProgress,type Readiness} from './data/publication-workflow';
 
@@ -5,14 +6,14 @@ type Service={check:(companyId:string)=>Promise<Readiness>;run:(ready:Readiness,
 const phaseLabel:Record<PublicationProgress['phase'],string>={preparing:'Preparing',chunks:'Uploading records and SDS references',sds:'Uploading SDS files',validation:'Validating publication',finalizing:'Finalizing',published:'Published'};
 export default function PublicationPanel({company,service,onBusy}:{company:{id:string;name:string};service:Service;onBusy:(busy:boolean)=>void}){
  const [ready,setReady]=useState<Readiness|null>(null),[checking,setChecking]=useState(false),[publishing,setPublishing]=useState(false),[progress,setProgress]=useState<PublicationProgress|null>(null),[error,setError]=useState(''),[success,setSuccess]=useState(false);
- async function check(){setChecking(true);setError('');try{setReady(await service.check(company.id));}catch(e){setReady(null);setError(publicationError(e));}finally{setChecking(false);}}
+ async function check(){setChecking(true);setError('');try{setReady(await observe('publication.readiness',()=>service.check(company.id),{company:company.id}));}catch(e){setReady(null);setError(publicationError(e));}finally{setChecking(false);}}
  useEffect(()=>{void check();},[company.id]);
  useEffect(()=>{const guard=(event:Event)=>{if(publishing)event.preventDefault();};window.addEventListener('hazcom:before-navigation',guard);return()=>window.removeEventListener('hazcom:before-navigation',guard);},[publishing]);
  async function start(){
   if(!ready||publishing)return;
   setPublishing(true);onBusy(true);setSuccess(false);setError('');setProgress({phase:'preparing'});
-  try{await service.run(ready,setProgress);setSuccess(true);await check();}
-  catch(e){setError(publicationError(e));try{setReady(await service.check(company.id));}catch{/* Keep the failure visible; a later readiness check can refresh state. */}}
+  try{await observe('publication',()=>service.run(ready,p=>{setProgress(p);diagnostics.emit('publication','progress',{phase:p.phase,count:p.completed});}),{company:company.id});setSuccess(true);await check();}
+  catch(e){setError(publicationError(e));try{setReady(await observe('publication.readiness',()=>service.check(company.id),{company:company.id}));}catch{/* Keep the failure visible; a later readiness check can refresh state. */}}
   finally{setPublishing(false);onBusy(false);}
  }
  const current=ready?.current;

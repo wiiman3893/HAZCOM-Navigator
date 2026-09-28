@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {fields,filterRows,summary,localDate} from '@hazcom/authoring';
 import PublicationPanel from './PublicationPanel';
+import {diagnostics,instrumentAuthoring,screenContext} from './diagnostics/session';
 import type {PublicationProgress,Readiness} from './data/publication-workflow';
 
 export const navigation=['Management Home','Work Areas','Chemical Library','Workers','Assignments & Training','Reports & Export','Company & Access Administration'];
@@ -12,7 +13,10 @@ export default function AuthoringWorkspace({company,open,administration,publicat
  const [service,setService]=useState<any>(null),[data,setData]=useState<any>(null),[screen,setScreen]=useState('Management Home'),[filter,setFilter]=useState<any>({}),[selected,setSelected]=useState<string|null>(null);
  const [form,setForm]=useState<any>(null),[busy,setBusy]=useState(false),[publishing,setPublishing]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[members,setMembers]=useState<any[]>([]),[preview,setPreview]=useState<string|null>(null),[batchId,setBatchId]=useState<string|null>(null),[splitPages,setSplitPages]=useState<Record<string,string>>({});
  const running=useRef(false),alive=useRef(true),formRef=useRef<any>(null);formRef.current=form;
- useEffect(()=>{alive.current=true;let current=true;open().then(async s=>{const d=await s.snapshot();if(current){setService(s);setData(d);}}).catch(e=>{if(current)setError(String(e.message??e));});return()=>{current=false;alive.current=false;};},[open]);
+ useEffect(()=>{alive.current=true;let current=true;open().then(async original=>{const s=instrumentAuthoring(original);const d=await s.snapshot();if(current){setService(s);setData(d);}}).catch(e=>{if(current)setError(String(e.message??e));});return()=>{current=false;alive.current=false;};},[open]);
+ useEffect(()=>{screenContext(screen);},[screen]);
+ useEffect(()=>{diagnostics.emit('dialog',form?'opened':'closed');},[!!form]);
+ useEffect(()=>{if(error)diagnostics.emit('validation','failed',{reason:'OPERATION_FAILED'});},[error]);
  useEffect(()=>{const guard=(e:Event)=>{if(formRef.current){e.preventDefault();setNotice('Save or cancel the open form before leaving.');}};const unload=(e:BeforeUnloadEvent)=>{if(formRef.current){e.preventDefault();e.returnValue='';}};window.addEventListener('hazcom:before-navigation',guard);window.addEventListener('beforeunload',unload);return()=>{window.removeEventListener('hazcom:before-navigation',guard);window.removeEventListener('beforeunload',unload);};},[]);
  useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview);},[preview]);
  const move=(next:string,f:any={})=>{if(publishing){setNotice('Wait for this publication attempt to finish before leaving.');return;}if(form){setNotice('Save or cancel the open form before leaving.');return;}setScreen(next);setSelected(null);setFilter(f);setError('');setNotice('');setPreview(null);};

@@ -1,6 +1,7 @@
 import React,{useCallback,useMemo,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import AuthoringWorkspace from '../../src/AuthoringWorkspace';
+import DiagnosticsPanel from '../../src/diagnostics/DiagnosticsPanel';
 import '../../src/styles.css';
 import {createPublicationWorkflow} from '../../src/data/publication-workflow';
 // This standalone development test entry is never imported by the Windows application.
@@ -19,4 +20,4 @@ function Harness(){const [companyId,setCompany]=useState('ui-company'),[role,set
   });
  },[companyId,role,entitlement]);
  return <div className="shell"><aside><h2>Synthetic UI test</h2><p>No Firebase connection. Separate temporary SQLite only.</p><label>Test Company<select value={companyId} onChange={e=>{const next=e.currentTarget.value;if(window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))setCompany(next);else e.currentTarget.value=companyId;}}><option value="ui-company">Fixture Company</option><option value="empty-company">Empty Company</option></select></label><label>Test role<select value={role} onChange={e=>setRole(e.target.value)}><option>manager</option><option>administrator</option><option>member</option></select></label><label>Test entitlement<select value={entitlement} onChange={e=>setEntitlement(e.target.value)}><option value="paid">Paid</option><option value="company-demo">Company Demo</option><option value="pro-demo">Pro Demo</option><option value="grace">Grace</option><option value="expired">Expired</option></select></label></aside>{role==='member'?<main><h1>Company member access</h1><p>Authoring is unavailable.</p></main>:<AuthoringWorkspace key={`${companyId}/${role}/${entitlement}`} open={open} publication={publication} company={{id:companyId,name:companyId==='ui-company'?'Synthetic UI Company':'Empty Company',contact_email:'safety@example.test',role}}/>}</div>;}
-createRoot(document.getElementById('root')!).render(<Harness/>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode><Harness/><DiagnosticsPanel/></React.StrictMode>);

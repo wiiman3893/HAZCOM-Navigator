@@ -12,3 +12,7 @@
 .sds-batch .snippet{white-space:normal;overflow-wrap:anywhere;background:#f6f8fa;padding:10px;border-radius:6px;color:#394150}
 .sds-batch .candidate .actions{align-items:end}
 .sds-batch .candidate input[type="number"]{max-width:110px}
+/* Support recording stays visible without obscuring authoring controls. */
+.diagnostics-indicator{position:fixed;bottom:8px;right:16px;z-index:90;background:#17394b;color:white;font-size:12px;padding:7px 12px;border-radius:5px}
+.diagnostics-panel{position:fixed;right:16px;top:24px;width:min(540px,90vw);max-height:85vh;overflow:auto;z-index:100;box-shadow:0 8px 30px #0004;border:1px solid #839ba8}
+.diagnostics-panel .actions{flex-wrap:wrap}.diagnostics-panel small{overflow-wrap:anywhere}
