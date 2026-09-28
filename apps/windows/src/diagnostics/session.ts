@@ -36,7 +36,7 @@ export class DiagnosticClient{
  }
  async flush():Promise<void>{
   if(this.timer){clearTimeout(this.timer);this.timer=null;}if(this.sending){await this.sending;if(this.queue.length)return this.flush();return;}
-  this.sending=(async()=>{while(this.queue.length||this.dropped){const events=this.queue.splice(0,64),dropped=this.dropped;this.dropped=0;try{await this.transport('diagnostic_events',{events,dropped});}catch{this.failure='Some diagnostic events could not be saved.';this.queue=[];break;}}})();
+  this.sending=(async()=>{while(this.queue.length||this.dropped){const events=this.queue.splice(0,64),dropped=this.dropped;this.dropped=0;try{await this.transport('diagnostic_events',{events,dropped});}catch{this.dropped+=events.length+dropped+this.queue.length;this.failure=`Some diagnostic events could not be saved (${this.dropped} pending drop reports).`;this.queue=[];break;}}})();
   try{await this.sending;}finally{this.sending=null;}
  }
  async start(){await this.flush();await this.transport('diagnostic_start');await this.refresh();this.emit('navigation','changed');}

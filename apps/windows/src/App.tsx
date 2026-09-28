@@ -20,6 +20,7 @@ function AuthenticatedApp(){
   const [name,setName]=useState(''),[email,setEmail]=useState('');
   const generation=useRef(0);
   const creatingId=useRef<string|null>(null);
+  useEffect(()=>{diagnostics.context={...diagnostics.context,company:company?.id,role:company?.role,screen:company?diagnostics.context.screen:'company-selection'};diagnostics.emit('company.access','changed');},[company?.id,company?.role]);
   const refresh=useCallback(async()=>{
     const run=++generation.current,uid=auth.currentUser?.uid;
     setError('');

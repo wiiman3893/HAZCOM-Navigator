@@ -1,5 +1,11 @@
 # Implementation status
 
+## In-application Diagnostics Mode — metadata-only reproduction timeline
+
+The Windows app now exposes Diagnostics with Ctrl+Shift+Alt+D. Recording is explicit, with Start/Stop, elapsed indicator, Ctrl+Shift+M markers, interrupted-session recovery and portable sanitized ZIP export. A bounded native writer observes existing service outcomes without changing authorization. Runtime `--diagnostics --diagnostic-session <label>` supports future runner correlation; there is no runner/control server or upload service. The existing CLI health snapshot remains read-only and schema-compatible. See [Diagnostics documentation](DIAGNOSTIC_TOOLBOX.md) and [milestone validation](WORK_RESUME_DIAGNOSTICS_MODE.md).
+
+Screenshots are explicitly unsupported/deferred. Browser tests prove the production panel with synthetic transport; actual native executable launches prove startup/clean exit/crash recovery without sign-in. This is not a new authenticated native/cloud acceptance claim. No Firebase deployment or real data mutation occurred.
+
 ## Commercial lifecycle and backup convergence — integrated source milestone
 
 Integrated into remote main at validated implementation commit `3a0c1de617f200f3aa237573b4347d0ed0c735a3`, followed by documentation-only closeout. See [closure report](COMMERCIAL_WORKSPACE_CLOSURE.md). The task branch remains intact; nothing was deployed.

@@ -1,5 +1,68 @@
 # HazCom Navigator diagnostic toolbox
 
+## In-application reproduction sessions
+
+HazCom now has two complementary diagnostic artifacts. The existing CLI `diagnostic-bundle.zip` describes system/repository/workspace/cloud health. The Windows app's `hazcom-diagnostic-session-<session-id>.zip` records the semantic timeline of a reproduction. Neither automatically includes the other, uploads anything, or changes application authority. CLI report schema `diagnosticSchemaVersion: 1` remains unchanged.
+
+In the Windows app, **Ctrl+Shift+Alt+D** opens Diagnostics, including at sign-in or under a Member account. Opening the panel does **not** record. Choose **Start Diagnostic Session**, reproduce the problem, optionally press **Ctrl+Shift+M** to mark a moment, then **Stop Diagnostic Session**. The persistent **DIAGNOSTICS ACTIVE** indicator shows elapsed time. Completed/interrupted sessions can be selected and exported. **Open diagnostic folder** reveals the managed export location without asking the customer to find AppData. Diagnostics grants no role, entitlement, workspace, authoring or publication permission.
+
+Mark Moment records the current screen and session-pseudonymous Company/workspace context with a reference to at most the previous 64 events. It does nothing while inactive. Hotkeys require the exact modifier combination, ignore repeats/composition, and React listeners are removed on unmount. No keyboard contents or arbitrary event objects are recorded.
+
+### Native storage and runtime launch
+
+The central Rust service owns one active session per process. A bounded background queue receives batches from the typed frontend client; React components never write diagnostic files. Storage is independent of all Company databases, restored workspaces, attachment roots and publication journals:
+
+```text
+<app-data>/diagnostics/sessions/diag_<128-bit-random-hex>/
+  manifest.json
+  app-events.jsonl
+  session.lock
+<app-data>/diagnostics/exports/
+  hazcom-diagnostic-session-diag_<128-bit-random-hex>.zip
+```
+
+On Windows, app-data is normally `%APPDATA%/com.saturnstraw.hazcomnavigator`. Native commands accept session IDs, not arbitrary paths. They reject traversal and redirected/reparse support paths. Metadata and ZIP exports use temporary files and rename. A session lock prevents another running process from being mistaken for a crashed process. Clean native exit flushes and finalizes; a subsequent launch marks an unlocked incomplete session interrupted. It does not resume it. Export can retain a valid JSONL prefix when a crash interrupted the last line; corruption within the completed prefix is refused. No automatic evidence deletion is performed.
+
+Launch the installed/built Windows executable with runtime arguments:
+
+```text
+hazcom-navigator.exe --diagnostics --diagnostic-session smoke-run-001
+```
+
+`--diagnostics` starts a fresh automated session before frontend startup. `--diagnostic-session` is optional and only used with that flag. Labels must be nonempty and at most 128 UTF-8 bytes; invalid labels are omitted. The stored correlation is SHA-256 of the label, never its raw text. Future runners can compute the same hash and discover the generated session ID from managed manifests. This adds no network listener, control channel, sign-in bypass or runner implementation. Build provenance is the Git HEAD embedded by the native build script; developer builds can also contain uncommitted changes, so a SHA is not a claim of a pristine build.
+
+### Event and package contract
+
+Session package schema is independently versioned at 1. ZIP members are exactly `manifest.json`, `app-events.jsonl`, and `summary.json`. Timing and errors are typed events rather than empty separate streams. The manifest describes ID, state, launch source, timestamps, version/build, OS/architecture, screenshot status, event/drop counts and safe failure code. Summary includes the JSONL SHA-256 and byte count. ZIP uses the same store-only/CRC32 convention as the CLI bundle. Repeated identical exports are idempotent; an existing different package is never overwritten.
+
+Each JSONL record contains `schemaVersion`, `sessionId`, monotonic `sequence`, `timestampMs` (UTC Unix milliseconds at native acceptance), a typed `event`, and optional `recentFrom`. Event payload fields are explicitly allowlisted: operation/outcome, screen, Company/workspace/entity pseudonyms, role category, readOnly state, publication phase, reason code, count, byte count, duration and submitted field names. Numeric timestamps plus sequence permit deterministic ordering even if the wall clock changes. Context is captured when the frontend event is submitted. Native acceptance timestamps may be close together for a batch.
+
+Implemented observations cover navigation/dialog state; workspace open/switch/authorization/mode; authentication and Company access refresh/revocation; authoring create/update/trash/restore for the current domain entities; append-only SDS Verification, HazCom Review and Training Events; SDS import/read/unlink; Bulk SDS import/split/merge/review save; backup export/restore/inspection; publication readiness, progress and outcome; validation and unexpected frontend errors. Significant operations include duration. This is not a profiler or an audit record of every SQL query, render or cloud request. A readiness check may return a blocking domain result without throwing; the UI still displays that result.
+
+Read-only package validation is part of the same toolbox:
+
+```text
+node scripts/diagnostics/session-package.mjs <exported-session.zip>
+```
+
+The validator checks fixed member paths, ZIP local/central structure, CRCs, stream hash/size, schema, session IDs, sequence, and event vocabulary. It neither repairs nor finalizes sessions and never imports their contents into a workspace.
+
+### Privacy and limits
+
+The frontend and native writer share `apps/windows/src/diagnostics/contract.json`. Unknown operations/fields are discarded; native structs reject arbitrary object fields. All Company/workspace/entity identifiers are session-scoped SHA-256 pseudonyms truncated to 24 hex characters. Raw names, emails, descriptions, submitted values, filenames, paths, document bytes/text, auth responses, credentials, secrets and stack traces are not event fields. Errors become bounded reason codes; unknown errors become `OPERATION_FAILED`. Export revalidates and reconstructs allowed data instead of copying arbitrary artifacts. The existing CLI redactor remains responsible for its health-snapshot text; both layers use the same documented exclusions and representative privacy test corpus. Pseudonyms provide correlation, not cryptographic anonymity against someone already knowing the IDs.
+
+Screenshots are **explicitly deferred/unsupported**. Metadata-only sessions are complete and useful. Tauri's native WebView2 controller exposes CapturePreview, but a maintainable implementation still needs tested COM stream/callback lifetime, cancellation, and allocation limits. No DOM canvas workaround, desktop capture, dependency, or false opt-in is shipped. A future selective provider must require explicit consent and disclose that visible UI pixels are not text-redacted. Current screenshot count is always zero.
+
+Bounds: frontend queue 256 events, batches 64, roughly 100 ms batching; native queue 16 batches/commands; recent sequence ring 64; event stream 4 MiB; at most 32 retained session directories. Starts are refused at the retention limit rather than deleting evidence. The native writer flushes batches and at most every 500 ms while idle, without per-event fsync. Control operations wait at most three seconds; authoring does not await event writes. Overflow counts dropped events and appears in the panel/manifest. Reaching the stream cap leaves recording visibly degraded and refuses further event bytes until Stop. A forced exit can lose the in-flight/queued tail; an interrupted package never claims a complete recording. Export memory is bounded by the stream/package limits. Disk exhaustion, malformed evidence, queue saturation and export failure stay in the diagnostic subsystem. No diagnostic failure rolls back a business save.
+
+### Acceptance evidence (2026-09-27 local date)
+
+Native tests exercise lifecycle, privacy sentinels, independent Python ZIP CRC/content validation, restart/partial-tail recovery, corrupt metadata, queue/storage bounds and live-session locking. A local 15,000-event stress test took approximately 0.28 s; the 4 MiB cap held at 4,194,250 bytes with 3,417 dropped events. These are local test measurements, not production latency guarantees.
+
+Production React panel/hotkeys run in the existing browser acceptance harness with synthetic native transport and isolated authoring SQLite. Tests verify no implicit start, exact modifiers/repeat suppression, one session, timer, marker, semantic navigation/CRUD, Stop/export UI, logging failure isolation and Member access without authoring. Separately, `apps/windows/test/diagnostics-runtime.ps1` launches the actual built Windows executable without sign-in and verifies runtime auto-start, startup event, clean native exit, forced termination and inactive manual restart. Native export is tested independently from browser UI. Authenticated native interaction through every newly instrumented workflow is not claimed.
+
+No real Firebase writes or deployments are part of diagnostics acceptance. Existing outstanding live Member, Demo, nonmember SDS and privileged-write denial probes remain pending. Screenshot acceptance and a future external UI smoke runner remain separate work.
+
 Run from the repository root with Node 24 and installed npm dependencies:
 
 ```text
