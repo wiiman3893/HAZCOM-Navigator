@@ -7,6 +7,7 @@ import path from 'node:path';
 import {authoringService,analyzeSdsPdf,analyzeSdsCandidate,normalizePageText,splitDrafts,mergeDrafts,normalizeDrafts} from '../src/index.js';
 import {nodeSqlite,nodeFiles} from '../../sync/src/node.js';
 import {REPLICA_SCHEMA_SQL} from '../../sync/src/sqlite.js';
+import {buildPublication} from '../../sync/src/projection.js';
 
 const migration3=await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8');
 const migration4=await readFile(new URL('../../../database/migrations/004_bulk_sds_import.sql',import.meta.url),'utf8');
@@ -105,6 +106,7 @@ test('batch session persists source integrity and segmentation across restart wi
   assert.equal(reviewed.sds_import_draft[0].extraction_status,'ready');assert.equal(reviewFields.product_name.reviewed_value,'Reviewed Cleaner');assert.equal(reviewFields.cas_numbers.review_status,'corrected');
   const candidateDraft=reviewed.sds_import_draft[0];await restarted.approveSdsImportCandidate(candidateDraft.id,{productId:'bulk-product-one',attachmentId:'bulk-sds-one'});
   const approved=await restarted.snapshot();assert.equal(approved.chemical_product.find(row=>row.id==='bulk-product-one').product_name,'Reviewed Cleaner');assert.equal(approved.attachments.find(row=>row.id==='bulk-sds-one').slot_key,'sds');assert.equal(approved.sds_import_materialization[0].source_start_page,1);assert.equal(approved.sds_import_materialization[0].source_end_page,4);assert.equal(approved.sds_import_draft[0].approval_status,'materialized');
+  const publication=await buildPublication(f.sql,'company-a',f.files);assert.equal(publication.dataset.chemicalProducts.find(row=>row.id==='bulk-product-one').product_name,'Reviewed Cleaner');assert.equal(publication.attachments[0].attachmentId,'bulk-sds-one');assert.equal(publication.attachments[0].sha256,approved.sds_import_materialization[0].child_sha256);assert.equal(publication.attachments[0].sizeBytes,approved.sds_import_materialization[0].child_size_bytes);
   assert.equal(await restarted.approveSdsImportCandidate(candidateDraft.id,{productId:'bulk-product-one',attachmentId:'bulk-sds-one'}),'bulk-product-one');
   const other=await f.service('company-b').snapshot();assert.equal(other.sds_import_session.length,0);assert.equal(other.sds_import_draft.length,0);assert.equal(other.sds_import_page.length,0);
   await assert.rejects(f.service('company-b').splitSdsImportDraft('batch-one',after.sds_import_draft[0].id,2),/Company/);
