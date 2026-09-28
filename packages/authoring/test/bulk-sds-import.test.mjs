@@ -4,12 +4,13 @@ import {createHash} from 'node:crypto';
 import {readFile,mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {authoringService,analyzeSdsPdf,splitDrafts,mergeDrafts,normalizeDrafts} from '../src/index.js';
+import {authoringService,analyzeSdsPdf,analyzeSdsCandidate,normalizePageText,splitDrafts,mergeDrafts,normalizeDrafts} from '../src/index.js';
 import {nodeSqlite,nodeFiles} from '../../sync/src/node.js';
 import {REPLICA_SCHEMA_SQL} from '../../sync/src/sqlite.js';
 
 const migration3=await readFile(new URL('../../../database/migrations/003_authoring.sql',import.meta.url),'utf8');
 const migration4=await readFile(new URL('../../../database/migrations/004_bulk_sds_import.sql',import.meta.url),'utf8');
+const migration5=await readFile(new URL('../../../database/migrations/005_bulk_sds_extraction.sql',import.meta.url),'utf8');
 function pdf(pages){
  const objects=['1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj'];
  const kids=[];
@@ -18,6 +19,33 @@ function pdf(pages){
  return new TextEncoder().encode('%PDF-1.4\n'+objects.join('\n')+'\n%%EOF');
 }
 const coverage=(pageCount,drafts)=>normalizeDrafts(pageCount,drafts).flatMap(d=>Array.from({length:d.endPage-d.startPage+1},(_,i)=>d.startPage+i));
+
+test('candidate extraction normalizes headings and preserves field provenance',()=>{
+ const pages=[
+  {pageNumber:1,textSource:'embedded',text:'S E C T I O N  1: Identification\nProduct Name: Synthetic Degreaser\nManufacturer: Example Safety Products'},
+  {pageNumber:2,textSource:'embedded',text:'SECTION 3: Composition\nAcetone 67-64-1'},
+  {pageNumber:3,textSource:'embedded',text:'SECTION 16: Other information\nRevision date: 09/28/2026'}
+ ];
+ assert.match(normalizePageText(pages[0].text),/^SECTION 1:/);
+ const result=analyzeSdsCandidate(pages),fields=Object.fromEntries(result.fields.map(row=>[row.fieldName,row]));
+ assert.deepEqual(result.sections.map(section=>section.number),[1,3,16]);
+ assert.equal(fields.product_name.proposedValue,'Synthetic Degreaser');
+ assert.equal(fields.product_name.sourceSection,1);
+ assert.equal(fields.manufacturer.proposedValue,'Example Safety Products');
+ assert.equal(fields.sds_date.proposedValue,'2026-09-28');
+ assert.equal(fields.sds_date.sourceSection,16);
+ assert.equal(fields.cas_numbers.proposedValue,'67-64-1');
+ assert.equal(fields.cas_numbers.sourceSection,3);
+ assert.equal(result.status,'ready');
+});
+
+test('candidate extraction rejects bad CAS checksums and leaves unknown fields unresolved',()=>{
+ const result=analyzeSdsCandidate([{pageNumber:1,textSource:'ocr',text:'SECTION 3 Composition\nBad CAS 67-64-2'}]);
+ const fields=Object.fromEntries(result.fields.map(row=>[row.fieldName,row]));
+ assert.equal(fields.cas_numbers.proposedValue,null);
+ assert.equal(fields.cas_numbers.confidence,'unresolved');
+ assert.equal(result.status,'needs_review');
+});
 
 test('one text SDS stays one review candidate',async()=>{
  const a=await analyzeSdsPdf(pdf(['Safety Data Sheet SECTION 1: IDENTIFICATION Product Name: Synthetic Cleaner Page 1 of 1 SECTION 16 OTHER INFORMATION']));
@@ -52,7 +80,7 @@ test('image-only PDF is imported as OCR-required and remains manually splittable
 });
 
 async function setup(){
- const folder=await mkdtemp(path.join(tmpdir(),'hazcom-bulk-import-'));const sql=nodeSqlite(path.join(folder,'author.db'),REPLICA_SCHEMA_SQL+migration3+migration4),files=await nodeFiles(path.join(folder,'attachments'));
+ const folder=await mkdtemp(path.join(tmpdir(),'hazcom-bulk-import-'));const sql=nodeSqlite(path.join(folder,'author.db'),REPLICA_SCHEMA_SQL+migration3+migration4+migration5),files=await nodeFiles(path.join(folder,'attachments'));
  for(const id of ['company-a','company-b'])sql.db.prepare('INSERT INTO company(id,name,contact_email) VALUES (?,?,?)').run(id,id,'safety@example.test');
  const service=companyId=>authoringService({sql,files,companyId,authorize:async()=>({companyId,role:'manager',active:true})});
  return {sql,files,service};
@@ -69,6 +97,10 @@ test('batch session persists source integrity and segmentation across restart wi
   await first.mergeSdsImportDraft('batch-one',d.sds_import_draft[1].id,'previous');d=await first.snapshot();assert.deepEqual(d.sds_import_draft.map(x=>[x.start_page,x.end_page]),[[1,3],[4,4]]);
   await first.mergeSdsImportDraft('batch-one',d.sds_import_draft[0].id,'next');await first.saveSdsImportDrafts('batch-one');
   const restarted=f.service('company-a'),after=await restarted.snapshot();assert.equal(after.sds_import_session[0].status,'review_drafts_saved');assert.deepEqual(after.sds_import_draft.map(x=>[x.start_page,x.end_page]),[[1,4]]);assert.deepEqual(after.sds_import_page.map(x=>x.page_number),[1,2,3,4]);
+  assert.equal(after.sds_import_page.filter(row=>row.ocr_status==='pending').length,4);assert.equal(after.sds_import_draft.filter(row=>row.approval_status==='unapproved').length,1);assert.equal(after.sds_import_field.length,4);
+  await restarted.reviewSdsImportCandidate(after.sds_import_draft[0].id,{product_name:'Reviewed Cleaner',manufacturer:'Example Maker',sds_date:'2026-09-28',cas_numbers:'67-64-1'});
+  const reviewed=await restarted.snapshot(),reviewFields=Object.fromEntries(reviewed.sds_import_field.map(row=>[row.field_name,row]));
+  assert.equal(reviewed.sds_import_draft[0].extraction_status,'ready');assert.equal(reviewFields.product_name.reviewed_value,'Reviewed Cleaner');assert.equal(reviewFields.cas_numbers.review_status,'corrected');
   const other=await f.service('company-b').snapshot();assert.equal(other.sds_import_session.length,0);assert.equal(other.sds_import_draft.length,0);assert.equal(other.sds_import_page.length,0);
   await assert.rejects(f.service('company-b').splitSdsImportDraft('batch-one',after.sds_import_draft[0].id,2),/Company/);
  }finally{f.sql.close();}
