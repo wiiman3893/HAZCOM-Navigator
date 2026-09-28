@@ -1,6 +1,8 @@
 # Implementation status
 
-## In-application Diagnostics Mode — metadata-only reproduction timeline
+## In-application Diagnostics Mode — integrated metadata-only reproduction timeline
+
+Validated source `661b28d779a5b12a7ff119a06ecc803aa8934335` is integrated into GitHub main, followed by documentation-only closeout. Final validation: diagnostics 16, browser UI 12, native Rust 17, Firebase emulator 24, publication/lifecycle 12, full core/SQLite/sync/authoring suite, all builds, native publication emulator proof and actual executable runtime start/exit/recovery pass.
 
 The Windows app now exposes Diagnostics with Ctrl+Shift+Alt+D. Recording is explicit, with Start/Stop, elapsed indicator, Ctrl+Shift+M markers, interrupted-session recovery and portable sanitized ZIP export. A bounded native writer observes existing service outcomes without changing authorization. Runtime `--diagnostics --diagnostic-session <label>` supports future runner correlation; there is no runner/control server or upload service. The existing CLI health snapshot remains read-only and schema-compatible. See [Diagnostics documentation](DIAGNOSTIC_TOOLBOX.md) and [milestone validation](WORK_RESUME_DIAGNOSTICS_MODE.md).
 
