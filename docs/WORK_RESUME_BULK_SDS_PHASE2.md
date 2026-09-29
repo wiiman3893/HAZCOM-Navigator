@@ -15,6 +15,8 @@ Checkpoint 4 (`a95c103`) adds the explicit existing-Product approval choice. Upd
 
 The Windows batch UI now requires a visible create/update choice and, for update, an explicit existing Product selection. Its acceptance test covers OCR, persisted field refresh, and update approval. That test found and fixed stale form state after OCR: the visible fields now refresh when the persisted extraction values change.
 
+Checkpoint 5 (`073c10a`) extends the existing native workspace and Firebase emulator harnesses with an approved Bulk child. Backup v2 restores the authoritative Product and SDS into an isolated native workspace with matching bytes, size, and SHA-256. Unfinished/import-review tables remain intentionally outside the backup contract. The restored authoring workspace then publishes through the ordinary schema-2 staged Functions/Firestore/Storage path; no Bulk-specific cloud data is introduced. A fresh independent SQLite replica downloads and activates the published Product/SDS. A deliberately corrupted SDS download is rejected while the prior replica state remains active, followed by successful revision-2 synchronization and atomic activation.
+
 Validation at checkpoint 2:
 
 - `npm run test:authoring`: 17 passed
@@ -39,6 +41,13 @@ Validation at checkpoint 4:
 - `npm run test:authoring:ui`: 12 passed before expanding the Bulk scenario
 - focused expanded Bulk UI acceptance: 1 passed (OCR through existing-Product update)
 
-DO NOT CLAIM YET: explicit mid-run OCR cancellation, duplicate suggestions, approved-child backup/restore acceptance, emulator publication, independent replica import, larger-batch resilience, broad final regression, or integration to main.
+Validation at checkpoint 5:
 
-Exact next action: extend the existing backup/restore and schema-2 emulator/replica harnesses with an approved Bulk child, proving restored SDS hash/size and independent replica activation without publishing import-review tables.
+- focused native authoring/backup/restore acceptance: passed
+- `npm run test:windows:publication:emulator`: passed
+- emulator proof included begin/stage/upload/seal/validate/finalize, interrupted upload retry, lost-finalization recovery, approved Bulk Product/SDS reads, clean independent replica import, corrupted-download fallback, and revision-2 activation
+- Firebase project guard used only `demo-hazcom-navigator`; no deployment and no real Firebase mutation
+
+DO NOT CLAIM YET: explicit mid-run OCR cancellation, duplicate suggestions, larger-batch resilience, broad final regression, final documentation, or integration to main.
+
+Exact next action: add a moderate synthetic batch resilience check, update the main Bulk SDS/implementation-status documentation, then run the complete regression bar and integrate only if every required suite is clean.
