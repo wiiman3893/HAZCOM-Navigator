@@ -1,10 +1,16 @@
 # Windows authentication and front-door handoff
 
+## Persistent session checkpoint — September 29, 2026
+
+Windows now uses Firebase-managed local Auth persistence, preferring IndexedDB with localStorage as the supported fallback. Startup explicitly waits for Firebase restoration and then repeats live Account, Company, Membership, role, identity-revocation, and coverage checks before a Company context can mount or SQLite can open. Sign-out closes SQLite and calls Firebase sign-out, clearing persisted Auth while retaining all local Company data. Offline startup with a restored identity stays closed pending online verification; the seven-day offline lease remains unimplemented.
+
+A Firebase Auth emulator test closes and relaunches a real Edge persistent profile to prove restoration and sign-out clearing. Native packaged WebView2 restart with real production OAuth remains a separate acceptance step. See [Windows persistent session handoff](WINDOWS_PERSISTENT_SESSION_HANDOFF.md).
+
 ## Production-configurable transport checkpoint — September 29, 2026
 
 The development-only release rejection described in the historical checkpoint below has been replaced by a validated two-environment contract. Windows configuration is checked before Firebase initialization. Debug development builds accept only `hazcom-navigator-dev`; release builds reject development, demo/emulator, local remote endpoints and malformed production configuration. The native loopback relay now accepts validated production public Firebase configuration, generates its CSP from the exact selected auth domain, and retains its nonce, Host/Origin, one-use, size, timeout, cleanup and concurrency protections.
 
-The supported credential exchange is unchanged: the browser's official Firebase Google popup returns a Google OAuth ID token, and the Windows Firebase client uses `GoogleAuthProvider.credential` plus `signInWithCredential`. Sessions remain in memory, offline authoring remains disabled, and SQLite still opens only after live Company authorization. No production project or credential was created and no real production OAuth acceptance is claimed. See [production Windows auth transport handoff](PRODUCTION_WINDOWS_AUTH_TRANSPORT_HANDOFF.md).
+The supported credential exchange is unchanged: the browser's official Firebase Google popup returns a Google OAuth ID token, and the Windows Firebase client uses `GoogleAuthProvider.credential` plus `signInWithCredential`. The later persistent-session checkpoint replaced the then-current in-memory session while retaining the same transport and live Company authorization boundary. No production project or credential was created and no real production OAuth acceptance is claimed. See [production Windows auth transport handoff](PRODUCTION_WINDOWS_AUTH_TRANSPORT_HANDOFF.md).
 
 Checkpoint: 2026-09-21. The authoritative project is the local `HAZCOM Navigator` source, promoted without merging older remote implementation choices.
 
@@ -53,7 +59,7 @@ Client entitlement labels and creation availability are presentation only. Every
 
 ## Restart, logout, failure and verification limits
 
-- Both browser and Windows Firebase instances use **inMemoryPersistence**. App restart/reload requires login again; there is no implemented persistent desktop session to restore. A browser may remember Google's account selection independently. The server's activeCompanyId survives and is revalidated after the next login.
+- The system-browser relay still uses **inMemoryPersistence** and signs itself out after returning the one-time Google credential. The Windows Firebase instance now uses the supported persistent mechanism described at the top of this handoff. The server's activeCompanyId survives and is revalidated after restoration.
 - Sign out calls Firebase `signOut`; its listener clears the shell and closes the database. No draft data is deleted. This path was code-reviewed; a fresh interactive logout/relogin acceptance run was not completed on September 21.
 - Popup cancellation/error is displayed in the system-browser relay and can be retried there. Closing the browser without completing leaves Windows waiting until the three-minute timeout. Browser-open errors and Firebase exchange errors are displayed in Windows. There is no immediate in-app Cancel command yet.
 - Focus/online events and a 60-second timer refresh live access. Company/membership listeners react to online revocation. Stale async account loads are ignored using a generation counter.

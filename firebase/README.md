@@ -27,7 +27,7 @@ The sections below retain historical foundation/checkpoint details. Their 350-re
 - No application Hosting deployment or mobile Crashlytics setup. Firebase's project creation supplies a default hosting-site identifier used by Auth; no application website was deployed.
 - No production project/alias. No writes or deployments target `command-rhythm`.
 
-`../.env.example` contains verified public Web SDK configuration. `../.env` is ignored and must stay uncommitted. Never add Admin credentials, CLI credentials or refresh tokens. The Windows application now gates the existing shell behind Google sign-in, live Account/entitlement/membership reads and Company selection. Its native browser relay is intentionally development-only; see below.
+`../.env.example` contains verified public Web SDK configuration. `../.env` is ignored and must stay uncommitted. Never add Admin credentials, CLI credentials or refresh tokens. The Windows application gates the existing shell behind Google sign-in, live Account/entitlement/membership/coverage reads and Company selection. Firebase-managed WebView persistence now survives normal restart, but restored identity never opens SQLite without fresh online authorization; see the Windows auth handoffs.
 
 ## Run and deploy
 

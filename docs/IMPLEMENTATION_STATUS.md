@@ -1,5 +1,11 @@
 # Implementation status
 
+## Persistent Windows Firebase session — implemented locally
+
+Windows uses the supported Firebase 12.19.0 Auth persistence hierarchy (`indexedDBLocalPersistence`, then `browserLocalPersistence`) in the Tauri WebView2 profile. Firebase owns durable session data and token refresh; HazCom does not serialize tokens or private SDK state. Startup has explicit restoring, signed-out, authorizing, authorized, and failed states. Restored identity cannot expose a Company or open SQLite until online Account bootstrap, canonical Membership/Company checks, trusted identity/revocation checks, and commercial coverage authorization succeed.
+
+Sign-out clears the Firebase session and active workspace without deleting local SQLite, SDS, restored workspaces, journals, or backups. Account switching closes the prior lease before the new identity is authorized. Offline startup retains identity/local data but blocks authoring. The seven-day offline lease remains unimplemented. Emulator/Edge persistent-profile restart and focused session UI acceptance pass; packaged real-production WebView2 restart remains manual acceptance. See [Windows persistent session handoff](WINDOWS_PERSISTENT_SESSION_HANDOFF.md).
+
 ## In-application Diagnostics Mode — integrated metadata-only reproduction timeline
 
 Validated source `661b28d779a5b12a7ff119a06ecc803aa8934335` is integrated into GitHub main, followed by documentation-only closeout. Final validation: diagnostics 16, browser UI 12, native Rust 17, Firebase emulator 24, publication/lifecycle 12, full core/SQLite/sync/authoring suite, all builds, native publication emulator proof and actual executable runtime start/exit/recovery pass.
