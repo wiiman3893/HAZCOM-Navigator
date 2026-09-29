@@ -1,6 +1,6 @@
 const compact=value=>String(value??'').replace(/[\t\f\v ]+/g,' ').replace(/ *\n */g,'\n').replace(/\n{3,}/g,'\n\n').trim();
 const evidence=value=>compact(value).replace(/\s+/g,' ').slice(0,320);
-const confidence=(source,label,section)=>source==='ocr'?'medium':label&&section===1?'high':label?'medium':'low';
+const confidence=(source,label,section)=>source!=='embedded'?'medium':label&&section===1?'high':label?'medium':'low';
 const field=(name,value,{section=null,page=null,source='unavailable',label=false,snippet='' }={})=>({fieldName:name,proposedValue:value||null,sourceSection:section,sourcePage:page,evidence:evidence(snippet),method:source,confidence:value?confidence(source,label,section):'unresolved'});
 
 export const SDS_EXTRACTION_VERSION=1;
@@ -31,6 +31,8 @@ export function parseSdsSections(pages){
 }
 
 function matchLabel(text,patterns){for(const pattern of patterns){const match=text.match(pattern);if(match?.[1])return {value:evidence(match[1]),snippet:evidence(match[0]),label:true};}return null;}
+const pageSource=page=>['embedded','ocr','mixed'].includes(page?.textSource)?page.textSource:'unavailable';
+function labelEvidence(pages,patterns,allowedPages){for(const page of pages){if(allowedPages&&!allowedPages.includes(page.pageNumber))continue;const hit=matchLabel(normalizePageText(page.normalizedText??page.text),patterns);if(hit)return {...hit,page:page.pageNumber,source:pageSource(page)};}return null;}
 function validCas(value){const digits=value.replaceAll('-','');if(digits.length<5)return false;const check=Number(digits.at(-1));let sum=0,multiplier=1;for(let i=digits.length-2;i>=0;i--)sum+=Number(digits[i])*multiplier++;return sum%10===check;}
 function isoDate(value){
  const input=evidence(value);let match=input.match(/\b(20\d{2}|19\d{2})[-/.](0?[1-9]|1[0-2])[-/.](0?[1-9]|[12]\d|3[01])\b/);
@@ -42,21 +44,19 @@ function isoDate(value){
 
 export function extractSdsFields(pages,sections=parseSdsSections(pages)){
  const section1=sections.find(s=>s.number===1),section16=sections.findLast?.(s=>s.number===16)??[...sections].reverse().find(s=>s.number===16);
- const first=pages[0]??{},one=section1?.text||normalizePageText(first.normalizedText??first.text),sixteen=section16?.text||'';
- const source=pages.some(p=>p.textSource==='ocr')?'ocr':pages.some(p=>p.textSource==='mixed')?'mixed':pages.some(p=>p.textSource==='embedded')?'embedded':'unavailable';
- const product=matchLabel(one,[/(?:product\s+(?:identifier|name)|trade\s+name|material\s+name)\s*[:\-]\s*([^\n|;]{2,160})/i]);
- const manufacturer=matchLabel(one,[/(?:manufacturer|supplier|company)\s*(?:name)?\s*[:\-]\s*([^\n|;]{2,160})/i]);
- const dateHit=matchLabel(sixteen+'\n'+one,[/(?:revision|revised|preparation|prepared|issue|issued)\s*(?:date)?\s*[:\-]\s*([^\n;]{4,60})/i]);
- const combined=pages.map(p=>normalizePageText(p.normalizedText??p.text)).join('\n');
- const casMatches=[...combined.matchAll(/\b\d{2,7}-\d{2}-\d\b/g)].map(m=>m[0]);
- const cas=[...new Set(casMatches.filter(validCas))].slice(0,50);
- const casSnippet=cas.length?evidence(combined.slice(Math.max(0,combined.indexOf(cas[0])-80),combined.indexOf(cas[0])+240)):'';
+ const first=pages[0]??{};
+ const product=labelEvidence(pages,[/(?:product\s+(?:identifier|name)|trade\s+name|material\s+name)\s*[:\-]\s*([^\n|;]{2,160})/i],section1?.pages);
+ const manufacturer=labelEvidence(pages,[/(?:manufacturer|supplier|company)\s*(?:name)?\s*[:\-]\s*([^\n|;]{2,160})/i],section1?.pages);
+ const dateHit=labelEvidence(pages,[/(?:revision|revised|preparation|prepared|issue|issued)\s*(?:date)?\s*[:\-]\s*([^\n;]{4,60})/i],section16?.pages)??labelEvidence(pages,[/(?:revision|revised|preparation|prepared|issue|issued)\s*(?:date)?\s*[:\-]\s*([^\n;]{4,60})/i],section1?.pages);
+ const casEvidence=[];for(const page of pages){const text=normalizePageText(page.normalizedText??page.text),values=[...text.matchAll(/\b\d{2,7}-\d{2}-\d\b/g)].map(match=>match[0]).filter(validCas);if(values.length)casEvidence.push({page:page.pageNumber,source:pageSource(page),values,text});}
+ const cas=[...new Set(casEvidence.flatMap(value=>value.values))].slice(0,50),casSources=new Set(casEvidence.filter(value=>value.values.some(c=>cas.includes(c))).map(value=>value.source));
+ const casMethod=casSources.size>1?'mixed':casSources.values().next().value??'unavailable',casFirst=casEvidence[0],casSnippet=casFirst?evidence(casFirst.text.slice(Math.max(0,casFirst.text.indexOf(cas[0])-80),casFirst.text.indexOf(cas[0])+240)):'';
  const revision=dateHit?isoDate(dateHit.value):null;
  return [
-  field('product_name',product?.value,{section:section1?1:null,page:section1?.pages[0]??first.pageNumber,source,label:!!product,snippet:product?.snippet}),
-  field('manufacturer',manufacturer?.value,{section:section1?1:null,page:section1?.pages[0]??first.pageNumber,source,label:!!manufacturer,snippet:manufacturer?.snippet}),
-  field('sds_date',revision,{section:section16?16:section1?1:null,page:section16?.pages[0]??section1?.pages[0]??first.pageNumber,source,label:!!dateHit,snippet:dateHit?.snippet}),
-  field('cas_numbers',cas.join(', ')||null,{section:sections.find(s=>s.number===3)?3:null,page:pages.find(p=>cas.some(n=>normalizePageText(p.normalizedText??p.text).includes(n)))?.pageNumber??null,source,label:cas.length>0,snippet:casSnippet}),
+  field('product_name',product?.value,{section:section1?1:null,page:product?.page??first.pageNumber,source:product?.source??pageSource(first),label:!!product,snippet:product?.snippet}),
+  field('manufacturer',manufacturer?.value,{section:section1?1:null,page:manufacturer?.page??first.pageNumber,source:manufacturer?.source??pageSource(first),label:!!manufacturer,snippet:manufacturer?.snippet}),
+  field('sds_date',revision,{section:section16?.pages.includes(dateHit?.page)?16:section1?1:null,page:dateHit?.page??first.pageNumber,source:dateHit?.source??pageSource(first),label:!!dateHit,snippet:dateHit?.snippet}),
+  field('cas_numbers',cas.join(', ')||null,{section:sections.find(s=>s.number===3)?3:null,page:casFirst?.page??null,source:casMethod,label:cas.length>0,snippet:casSnippet}),
  ];
 }
 

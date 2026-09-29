@@ -26,6 +26,9 @@ tauri-plugin-opener = "2"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
 sha2 = "0.10"
 lopdf = { version = "0.38", default-features = false }
+windows = { version = "0.61.3", features = ["Data_Pdf", "Foundation", "Globalization", "Graphics_Imaging", "Media_Ocr", "Storage", "Storage_Streams"] }
+windows-future = "0.2.1"
 
 [dev-dependencies]
+font8x8 = "0.3"
 tower = { version = "0.5", features = ["util"] }

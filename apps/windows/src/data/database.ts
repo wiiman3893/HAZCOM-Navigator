@@ -17,6 +17,8 @@ export class WorkspaceDatabase {
   stage:(companyId:string,id:string,bytes:Uint8Array)=>invoke<string>('workspace_store_pdf',{token:this.lease.token,companyId,id,bytes:Array.from(bytes),importSource:false}),
   stageImport:(companyId:string,id:string,bytes:Uint8Array)=>invoke<string>('workspace_store_pdf',{token:this.lease.token,companyId,id,bytes:Array.from(bytes),importSource:true}),
   materialize:async(sessionId:string,startPage:number,endPage:number)=>{const result=await invoke<{bytes:number[];sha256:string;sizeBytes:number;pageCount:number;materializationVersion:number}>('workspace_materialize_sds_pdf',{token:this.lease.token,sessionId,startPage,endPage});return {...result,bytes:new Uint8Array(result.bytes)};},
+  ocrAvailability:()=>invoke<{status:string;language:string|null;ocrVersion:number}>('windows_ocr_availability'),
+  ocrPage:(sessionId:string,pageNumber:number)=>invoke<{rawText:string;language:string;ocrVersion:number}>('workspace_ocr_sds_page',{token:this.lease.token,sessionId,pageNumber}),
   read:async(relativePath:string)=>new Uint8Array(await invoke<number[]>('workspace_read_pdf',{token:this.lease.token,relativePath}))
  };
 }

@@ -26,7 +26,7 @@ test('privacy allowlist, raw errors omitted, failure isolation preserves result 
 });
 test('representative domain service outcomes are instrumented without record contents',async()=>{
  const h=harness();globalThis.diagnosticTransport=h.transport;await diagnostics.start();
- const methods=['snapshot','create','update','trash','importSds','readSds','unlinkSds','importSdsBatch','splitSdsImportDraft','mergeSdsImportDraft','saveSdsImportDrafts','reviewSdsImportCandidate','approveSdsImportCandidate'];const s=instrumentAuthoring(Object.fromEntries(methods.map(m=>[m,async()=>42])));
+ const methods=['snapshot','create','update','trash','importSds','readSds','unlinkSds','importSdsBatch','ocrSdsImportPage','processSdsImportOcr','splitSdsImportDraft','mergeSdsImportDraft','saveSdsImportDrafts','reviewSdsImportCandidate','approveSdsImportCandidate'];const s=instrumentAuthoring(Object.fromEntries(methods.map(m=>[m,async()=>42])));
  for(const kind of ['work_area','chemical_product','worker','work_area_product','work_area_assignment','sds_verification','hazcom_review','training_event'])await s.create(kind,{name:'PRIVATE RECORD'},'stable-id');
  await s.update('worker','stable-id',{email:'private@example.test'});await s.trash('worker','stable-id');await s.trash('worker','stable-id',true);await s.importSds('product',new Uint8Array([37,80,68,70]),'PRIVATE.pdf');for(const method of methods.filter(m=>!['create','update','trash','importSds'].includes(m)))await s[method]('id');
  await diagnostics.stop();assert(h.events.some(e=>e.operation==='training_event.create'&&e.outcome==='succeeded'));assert(h.events.some(e=>e.operation==='worker.restore'));assert(!JSON.stringify(h.events).includes('PRIVATE'));assert(!JSON.stringify(h.events).includes('private@example.test'));

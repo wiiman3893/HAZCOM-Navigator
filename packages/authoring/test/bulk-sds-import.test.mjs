@@ -49,6 +49,20 @@ test('candidate extraction rejects bad CAS checksums and leaves unknown fields u
  assert.equal(result.status,'needs_review');
 });
 
+test('mixed candidates preserve field-level evidence methods',()=>{
+ const result=analyzeSdsCandidate([
+  {pageNumber:1,textSource:'embedded',text:'SECTION 1: Identification\nProduct Name: Embedded Cleaner'},
+  {pageNumber:2,textSource:'ocr',text:'Manufacturer: OCR Safety Products'},
+  {pageNumber:3,textSource:'embedded',text:'SECTION 3: Composition\nAcetone 67-64-1'},
+  {pageNumber:4,textSource:'ocr',text:'Additional component 64-17-5'},
+  {pageNumber:5,textSource:'embedded',text:'SECTION 16: Other information\nRevision date: 2026-09-28'}
+ ]),fields=Object.fromEntries(result.fields.map(row=>[row.fieldName,row]));
+ assert.equal(fields.product_name.method,'embedded');assert.equal(fields.product_name.sourcePage,1);
+ assert.equal(fields.manufacturer.method,'ocr');assert.equal(fields.manufacturer.sourcePage,2);
+ assert.equal(fields.sds_date.method,'embedded');assert.equal(fields.sds_date.sourcePage,5);
+ assert.equal(fields.cas_numbers.method,'mixed');assert.equal(fields.cas_numbers.sourcePage,3);
+});
+
 test('one text SDS stays one review candidate',async()=>{
  const a=await analyzeSdsPdf(pdf(['Safety Data Sheet SECTION 1: IDENTIFICATION Product Name: Synthetic Cleaner Page 1 of 1 SECTION 16 OTHER INFORMATION']));
  assert.equal(a.pageCount,1);assert.equal(a.drafts.length,1);assert.equal(a.drafts[0].startPage,1);assert.equal(a.drafts[0].endPage,1);assert.equal(a.pages[0].ocrRequired,false);
@@ -120,5 +134,22 @@ test('failed child PDF verification creates no Product, attachment, or approval'
   f.files.materialize=async()=>{const bytes=pdf(['child']);return {bytes,sha256:'0'.repeat(64),sizeBytes:bytes.length,pageCount:1,materializationVersion:1};};
   await assert.rejects(service.approveSdsImportCandidate(draft.id,{productId:'must-not-exist',attachmentId:'must-not-exist-sds'}),/hash mismatch/);
   snapshot=await service.snapshot();assert.equal(snapshot.chemical_product.some(row=>row.id==='must-not-exist'),false);assert.equal(snapshot.attachments.some(row=>row.id==='must-not-exist-sds'),false);assert.equal(snapshot.sds_import_materialization.length,0);assert.equal(snapshot.sds_import_draft[0].approval_status,'unapproved');
+ }finally{f.sql.close();}
+});
+
+test('OCR processes only pending pages, persists results, and refreshes extraction across restart',async()=>{
+ const f=await setup();let calls=0;f.files.ocrPage=async(_session,page)=>{calls++;return {rawText:page===1?'SECTION 1: Identification\nProduct Name: Scanned Cleaner\nManufacturer: OCR Safety Products':'SECTION 3: Composition\nAcetone 67-64-1\nSECTION 16: Other information\nRevision date: 2026-09-28',language:'en-US',ocrVersion:1};};
+ try{const service=f.service('company-a');await service.importSdsBatch(pdf(['','']),'scan.pdf','ocr-batch');const results=await service.processSdsImportOcr('ocr-batch');assert.equal(results.length,2);assert.equal(calls,2);let snapshot=await f.service('company-a').snapshot();assert.equal(snapshot.sds_import_page.every(row=>row.ocr_status==='completed'&&row.text_source==='ocr'),true);const fields=Object.fromEntries(snapshot.sds_import_field.map(row=>[row.field_name,row]));assert.equal(fields.product_name.proposed_value,'Scanned Cleaner');assert.equal(fields.product_name.extraction_method,'ocr');assert.equal(fields.manufacturer.extraction_method,'ocr');assert.equal(fields.cas_numbers.proposed_value,'67-64-1');assert.equal(fields.sds_date.proposed_value,'2026-09-28');assert.deepEqual(await service.processSdsImportOcr('ocr-batch'),[]);assert.equal(calls,2);
+ }finally{f.sql.close();}
+});
+
+test('OCR language failure remains manual and creates no authoritative data',async()=>{
+ const f=await setup();f.files.ocrPage=async()=>{throw Error('OCR_LANGUAGE_SUPPORT_MISSING');};try{const service=f.service('company-a');await service.importSdsBatch(pdf(['']),'manual.pdf','manual-batch');const result=await service.ocrSdsImportPage('manual-batch',1);assert.equal(result.status,'manual_required');assert.equal(result.failureCode,'OCR_LANGUAGE_SUPPORT_MISSING');const snapshot=await service.snapshot();assert.equal(snapshot.sds_import_page[0].ocr_status,'manual_required');assert.equal(snapshot.sds_import_page[0].ocr_required,1);assert.equal(snapshot.chemical_product.length,0);assert.equal(snapshot.sds_import_draft[0].approval_status,'unapproved');}finally{f.sql.close();}
+});
+
+test('OCR preserves sparse embedded text on mixed pages and rejects unusable output safely',async()=>{
+ const f=await setup();let output='SECTION 1: Identification\nProduct Name: Mixed Source Cleaner';f.files.ocrPage=async()=>({rawText:output,language:'en-US',ocrVersion:1});
+ try{const service=f.service('company-a');await service.importSdsBatch(pdf(['Seed']),'mixed.pdf','mixed-batch');let result=await service.ocrSdsImportPage('mixed-batch',1);assert.equal(result.status,'completed');let snapshot=await service.snapshot(),page=snapshot.sds_import_page[0];assert.equal(page.text_source,'mixed');assert.match(page.raw_text,/Seed/);assert.match(page.raw_text,/Mixed Source Cleaner/);
+  await service.importSdsBatch(pdf(['']),'unusable.pdf','unusable-batch');output='...';result=await service.ocrSdsImportPage('unusable-batch',1);assert.equal(result.status,'manual_required');assert.equal(result.failureCode,'OCR_TEXT_UNUSABLE');snapshot=await service.snapshot();page=snapshot.sds_import_page.find(row=>row.session_id==='unusable-batch');assert.equal(page.ocr_required,1);assert.equal(page.ocr_status,'manual_required');assert.equal(snapshot.chemical_product.length,0);
  }finally{f.sql.close();}
 });

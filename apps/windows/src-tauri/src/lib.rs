@@ -4,6 +4,7 @@ mod backup_restore;
 mod workspace;
 mod diagnostics;
 mod sds_pdf;
+mod sds_ocr;
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -43,7 +44,7 @@ pub fn run() {
             ,workspace::activate_workspace,workspace::remembered_workspace,workspace::list_workspaces,
             workspace::close_workspace,workspace::workspace_select,workspace::workspace_batch,
             workspace::workspace_store_pdf,workspace::workspace_read_pdf,workspace::workspace_journal,
-            sds_pdf::workspace_materialize_sds_pdf
+            sds_pdf::workspace_materialize_sds_pdf,sds_ocr::windows_ocr_availability,sds_ocr::workspace_ocr_sds_page
         ])
         .build(tauri::generate_context!())
         .expect("error while running HazCom Navigator")
