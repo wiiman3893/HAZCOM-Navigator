@@ -1,5 +1,11 @@
 # Windows authentication and front-door handoff
 
+## Production-configurable transport checkpoint — September 29, 2026
+
+The development-only release rejection described in the historical checkpoint below has been replaced by a validated two-environment contract. Windows configuration is checked before Firebase initialization. Debug development builds accept only `hazcom-navigator-dev`; release builds reject development, demo/emulator, local remote endpoints and malformed production configuration. The native loopback relay now accepts validated production public Firebase configuration, generates its CSP from the exact selected auth domain, and retains its nonce, Host/Origin, one-use, size, timeout, cleanup and concurrency protections.
+
+The supported credential exchange is unchanged: the browser's official Firebase Google popup returns a Google OAuth ID token, and the Windows Firebase client uses `GoogleAuthProvider.credential` plus `signInWithCredential`. Sessions remain in memory, offline authoring remains disabled, and SQLite still opens only after live Company authorization. No production project or credential was created and no real production OAuth acceptance is claimed. See [production Windows auth transport handoff](PRODUCTION_WINDOWS_AUTH_TRANSPORT_HANDOFF.md).
+
 Checkpoint: 2026-09-21. The authoritative project is the local `HAZCOM Navigator` source, promoted without merging older remote implementation choices.
 
 ## Frozen source and recovery

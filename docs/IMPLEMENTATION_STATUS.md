@@ -115,13 +115,13 @@ See [Firebase handoff](../firebase/CODEX_HANDOFF.md) and [Firebase validation](.
 
 ## Authentication boundary
 
-The current Windows development login uses the system browser and a one-use loopback callback into the Tauri application. The working development flow is proven.
+The Windows login uses the system browser and a one-use loopback callback into the Tauri application. The working development flow is proven. Source now has an explicit development/production public Firebase configuration contract, validates before Firebase initialization, rejects development/emulator resources in release mode, and supports the same documented Google-ID-token to Firebase-credential transport with validated production-like configuration. Native relay security policy is generated from the exact selected auth domain.
 
 Current limitations:
 
 - Firebase session persistence is intentionally in-memory; restarting the app requires login again
-- the current loopback relay is a development implementation, not the final packaged production OAuth/session design
-- production OAuth/PKCE/return handling and secure persistent/offline authorization remain future work
+- no production Firebase project/client was created and the configurable release path has not been exercised against legitimate production configuration
+- OS-protected session persistence and the fixed seven-day offline authorization lease remain future work
 - Member published-data screens are not yet implemented in the Windows authoring client
 
 SQLite opens only after live Firebase Company authorization. Member accounts do not open the Manager/Administrator authoring workspace.
@@ -153,7 +153,7 @@ Reports & Export Phase 1 adds a read-only, offline Chemical Inventory report, Co
 
 The remaining roadmap is now dominated by commercialization, member/mobile delivery, and release hardening rather than missing Windows authoring foundations.
 
-1. **Harden production Windows authentication and session behavior.** Replace the development-only loopback/in-memory auth boundary with the approved packaged OAuth/PKCE return strategy, secure session persistence, restart/recovery behavior, and a defined bounded offline authorization policy.
+1. **Finish production Windows session and offline behavior.** The production-configurable loopback transport and fail-closed environment contract are implemented. Add OS-protected session persistence first, then the separately bounded seven-day offline authorization lease, restart/recovery behavior and real packaged production OAuth acceptance.
 2. **Build and exercise the published-member/mobile experience.** Complete authorized Company/Work Area/Product/SDS browsing, assignment/training views, offline replica synchronization, and physical-device acceptance using the existing published-replica foundation.
 3. **Integrate real billing and commercial lifecycle plumbing.** Add the selected billing provider, checkout/subscription management, verified idempotent webhooks, reconciliation, production email, scheduled lifecycle/cleanup jobs where required, and the authorized rollout/backfill of current commercial fields.
 4. **Complete production rollout and security acceptance.** Prove the remaining live authenticated nonmember, Member, Demo, and privileged-write denials; perform fresh signed-in native acceptance; define deployment/rollback, monitoring, rate/size limits, retention/backup operations, and related production safeguards.
