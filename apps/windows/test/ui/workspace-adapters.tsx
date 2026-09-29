@@ -2,12 +2,20 @@ import React,{useEffect,useState} from 'react';
 const params=new URLSearchParams(location.search);
 let active:any=null;
 export const calls:string[]=[];
-(window as any).workspaceTest={calls,readOnly:params.has('readonly'),failRefresh:false};
-export const auth={},db={},configurationError='';
-export async function signIn(){} export async function signOutAccount(){} export async function loadAccount(){} export async function call(){}
+let listener:((user:any)=>void)|null=null,errorListener:((error:unknown)=>void)|null=null;
+const saved=params.has('restored')?(localStorage.setItem('entry-test-user','account-a'),'account-a'):localStorage.getItem('entry-test-user');
+export const auth:any={currentUser:saved?{uid:saved,email:`${saved}@example.test`}:null,subscribe(next:(user:any)=>void,error:(error:unknown)=>void){listener=next;errorListener=error;setTimeout(()=>next(auth.currentUser),80);return()=>{listener=null;errorListener=null;};}};
+const test:any={calls,readOnly:params.has('readonly'),failRefresh:false,revoked:false,inactive:false,offline:false,authorizationComplete:location.pathname!=='/entry.html',nextUid:'account-a',switchAccount(uid:string){auth.currentUser={uid,email:`${uid}@example.test`};localStorage.setItem('entry-test-user',uid);listener?.(auth.currentUser);},invalidate(){errorListener?.(Object.assign(Error('invalid session'),{code:'auth/invalid-user-token'}));}};
+(window as any).workspaceTest=test;
+export const db={},configurationError='';
+export async function signIn(){auth.currentUser={uid:test.nextUid,email:`${test.nextUid}@example.test`};localStorage.setItem('entry-test-user',test.nextUid);listener?.(auth.currentUser);}
+export async function signOutAccount(){calls.push('signout');localStorage.removeItem('entry-test-user');auth.currentUser=null;listener?.(null);}
+export async function loadAccount(uid:string){calls.push('load:'+uid);test.authorizationComplete=false;await new Promise(resolve=>setTimeout(resolve,50));if(test.offline)throw Object.assign(Error('offline'),{code:'functions/unavailable'});if(test.revoked)throw Object.assign(Error('revoked'),{code:'functions/permission-denied'});return {uid,email:`${uid}@example.test`,companies:[{id:`company-${uid}`,name:`Company ${uid}`,contact_email:'qa@example.test',role:'manager'}],activeCompanyId:`company-${uid}`,entitlement:'Company · Active',canCreate:false};}
+export async function verifyActiveCompanyAuthorization(uid:string,company:any){calls.push('authorize:'+uid+'/'+company.id);await new Promise(resolve=>setTimeout(resolve,80));if(test.inactive)throw Object.assign(Error('Company access is no longer active.'),{code:'functions/permission-denied'});test.authorizationComplete=true;return {companyId:company.id,effectiveRole:company.role,capabilities:{canAuthor:true,canExportBackup:true}};}
+export async function call(name:string){calls.push('call:'+name);return {};}
 const entries=['primary','restored-a','restored-b','restored-broken'].map(workspaceId=>({workspaceId,companyId:'workspace-company',kind:workspaceId==='primary'?'primary':'restored',available:workspaceId!=='restored-broken',reason:workspaceId==='restored-broken'?'WORKSPACE_INTEGRITY_FAILED':null}));
-export async function closeWorkspace(){active=null;}
-export async function ensureWorkspace(){calls.push('ensure');if((window as any).workspaceTest.failRefresh){active=null;throw Error('Reopen failed safely');}const saved=localStorage.getItem('workspace-test-selection')??'primary';active={lease:{workspaceId:saved==='restored-missing'?'primary':saved,token:crypto.randomUUID(),readOnly:(window as any).workspaceTest.readOnly}};return {database:active,notice:saved==='restored-missing'?'Saved workspace unavailable; primary opened for this Company.':null};}
+export async function closeWorkspace(){calls.push('close');active=null;}
+export async function ensureWorkspace(){calls.push('ensure:'+auth.currentUser?.uid);if(!test.authorizationComplete)throw Error('WORKSPACE_OPENED_BEFORE_AUTHORIZATION');if((window as any).workspaceTest.failRefresh){active=null;throw Error('Reopen failed safely');}const saved=localStorage.getItem('workspace-test-selection')??'primary';active={lease:{workspaceId:saved==='restored-missing'?'primary':saved,token:crypto.randomUUID(),readOnly:(window as any).workspaceTest.readOnly}};return {database:active,notice:saved==='restored-missing'?'Saved workspace unavailable; primary opened for this Company.':null};}
 export async function listWorkspaces(){return entries;}
 export async function selectWorkspace(_uid:string,_company:string,id:string){calls.push('select:'+id);if(params.has('fail')&&id==='restored-b')throw Error('WORKSPACE_INTEGRITY_FAILED');active={lease:{workspaceId:id,token:crypto.randomUUID(),readOnly:params.has('readonly')}};localStorage.setItem('workspace-test-selection',id);return active;}
 export async function openAuthoring(_uid:string,_company:string,database:any){return database.lease.workspaceId;}

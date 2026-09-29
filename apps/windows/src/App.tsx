@@ -1,8 +1,8 @@
 import {diagnostics,observe} from './diagnostics/session';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onIdTokenChanged, type User } from 'firebase/auth';
 import { collection, getDocsFromServer, doc, onSnapshot } from 'firebase/firestore';
-import { auth, db, configurationError, signIn, signOutAccount, loadAccount, call, type AccountSession, type CompanyAccess } from './auth/firebase';
+import { auth, db, configurationError, signIn, signOutAccount, loadAccount, verifyActiveCompanyAuthorization, call, type AccountSession, type CompanyAccess } from './auth/firebase';
 import { closeWorkspace,ensureWorkspace,listWorkspaces,selectWorkspace,type WorkspaceDatabase,type WorkspaceEntry } from './data/database';
 import { openAuthoring } from './data/authoring';
 import AuthoringWorkspace from './AuthoringWorkspace';
@@ -16,31 +16,53 @@ export default function App(){
 }
 function AuthenticatedApp(){
   const [session,setSession]=useState<AccountSession|null>(null),[company,setCompany]=useState<CompanyAccess|null>(null);
-  const [signedIn,setSignedIn]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(configurationError);
+  const [phase,setPhase]=useState<'restoring'|'signed-out'|'authorizing'|'authorized'|'authorization-failed'>('restoring');
+  const [busy,setBusy]=useState(false),[error,setError]=useState(configurationError);
   const [name,setName]=useState(''),[email,setEmail]=useState('');
   const generation=useRef(0);
+  const identity=useRef<string|null|undefined>(undefined);
   const creatingId=useRef<string|null>(null);
   useEffect(()=>{diagnostics.context={...diagnostics.context,company:company?.id,role:company?.role,screen:company?diagnostics.context.screen:'company-selection'};diagnostics.emit('company.access','changed');},[company?.id,company?.role]);
-  const refresh=useCallback(async()=>{
-    const run=++generation.current,uid=auth.currentUser?.uid;
-    setError('');
-    if(!uid){setSession(null);setCompany(null);setBusy(false);return;}
-    setBusy(true);
+  const authorize=useCallback(async(uid:string,options:{closeFirst:boolean;preserveView:boolean})=>{
+    const run=++generation.current;
+    setError('');setBusy(true);setPhase('authorizing');
+    if(!options.preserveView){setSession(null);setCompany(null);}
     try{
+      if(options.closeFirst)await closeWorkspace();
+      if(run!==generation.current||auth.currentUser?.uid!==uid)return;
       const next=await observe('company.access.refresh',()=>loadAccount(uid));
-      if(run!==generation.current)return;
-      setSession(next);setEmail(next.email);setCompany(next.companies.find(c=>c.id===next.activeCompanyId)??null);
-    }catch(e){if(run===generation.current){setSession(null);setCompany(null);setError(message(e));void closeWorkspace();}}
+      const selected=next.companies.find(c=>c.id===next.activeCompanyId)??null;
+      if(selected)await observe('workspace.authorization',()=>verifyActiveCompanyAuthorization(uid,selected),{company:selected.id});
+      if(run!==generation.current||auth.currentUser?.uid!==uid)return;
+      setSession(next);setEmail(next.email);setCompany(selected);setPhase('authorized');
+    }catch(e){if(run===generation.current){setSession(null);setCompany(null);setPhase('authorization-failed');setError(authorizationMessage(e));await closeWorkspace();}}
     finally{if(run===generation.current)setBusy(false);}
   },[]);
+  const beginIdentity=useCallback(async(user:User|null)=>{
+    const uid=user?.uid??null;
+    identity.current=uid;
+    const run=++generation.current;
+    setSession(null);setCompany(null);setError('');setBusy(!!uid);setPhase(uid?'authorizing':'signed-out');
+    await closeWorkspace();
+    if(run!==generation.current||!uid||auth.currentUser?.uid!==uid)return;
+    await authorize(uid,{closeFirst:false,preserveView:false});
+  },[authorize]);
+  const refresh=useCallback(async()=>{
+    const uid=auth.currentUser?.uid;
+    if(!uid){await beginIdentity(null);return;}
+    await authorize(uid,{closeFirst:false,preserveView:true});
+  },[authorize,beginIdentity]);
   useEffect(()=>{
-    const stop=onAuthStateChanged(auth,user=>{setSession(null);setCompany(null);setSignedIn(!!user);void closeWorkspace();void refresh();});
-    const offline=()=>{++generation.current;setSession(null);setCompany(null);setBusy(false);setError('Connect to the internet to verify your Company access.');void closeWorkspace();};
-    const focus=()=>{if(auth.currentUser)void refresh();};
+    const stop=onIdTokenChanged(auth,user=>{
+      if(identity.current===user?.uid&&identity.current!==undefined){if(user)void refresh();return;}
+      void beginIdentity(user);
+    },()=>{identity.current=auth.currentUser?.uid??null;++generation.current;setSession(null);setCompany(null);setBusy(false);setPhase(auth.currentUser?'authorization-failed':'signed-out');setError(auth.currentUser?'Your saved sign-in could not be validated. Connect and sign in again.':'Sign in again to continue.');void closeWorkspace();});
+    const offline=()=>{++generation.current;setSession(null);setCompany(null);setBusy(false);setPhase(auth.currentUser?'authorization-failed':'signed-out');setError('Connect to the internet to verify your Company access.');void closeWorkspace();};
+    const focus=()=>{if(auth.currentUser&&navigator.onLine)void refresh();};
     window.addEventListener('offline',offline);window.addEventListener('online',focus);window.addEventListener('focus',focus);
     const timer=window.setInterval(focus,60000);
     return()=>{stop();++generation.current;clearInterval(timer);window.removeEventListener('offline',offline);window.removeEventListener('online',focus);window.removeEventListener('focus',focus);};
-  },[refresh]);
+  },[beginIdentity,refresh]);
   useEffect(()=>{
     if(!session || !company)return;
     const revoke=()=>{diagnostics.emit('company.access','revoked');setCompany(null);setError('Company access changed. Refresh your access to continue.');void closeWorkspace();};
@@ -52,6 +74,12 @@ function AuthenticatedApp(){
     return()=>{stopMember();stopCompany();};
   },[session,company]);
   async function action(work:()=>Promise<unknown>){setBusy(true);setError('');try{await work();}catch(e){setError(message(e));}finally{setBusy(false);}}
+  async function explicitSignOut(){
+    identity.current=null;++generation.current;setSession(null);setCompany(null);setPhase('signed-out');setError('');
+    await closeWorkspace();
+    try{await signOutAccount();}
+    catch(error){identity.current=auth.currentUser?.uid??null;setPhase(auth.currentUser?'authorization-failed':'signed-out');throw error;}
+  }
   async function choose(id:string){
     if(!window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))return;
     setCompany(null);await closeWorkspace();
@@ -59,19 +87,19 @@ function AuthenticatedApp(){
     await observe('company.access',()=>call('setActiveCompany',{companyId:id}),{company:id});await refresh();
   }
   async function create(){creatingId.current??=crypto.randomUUID();await call('createCompany',{companyId:creatingId.current,company:{name:name.trim(),contact_email:email.trim()}}).then(async result=>{await call('setActiveCompany',{companyId:(result as {companyId:string}).companyId});});creatingId.current=null;setName('');await refresh();}
-  const controls=<><button disabled={busy} onClick={()=>void refresh()}>Refresh access</button><button disabled={busy} onClick={()=>{if(window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))void action(signOutAccount);}}>Sign out</button></>;
+  const controls=<><button disabled={busy} onClick={()=>void refresh()}>Refresh access</button><button disabled={busy} onClick={()=>{if(window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))void action(explicitSignOut);}}>Sign out</button></>;
   if(!session || !company)return <main className="entry"><section className="panel">
-    <h1>HazCom Navigator</h1><p>Sign in, then choose your Company workspace.</p>
+    <h1>HazCom Navigator</h1><p>{phase==='restoring'?'Restoring your saved sign-in…':phase==='authorizing'?'Your identity is restored. Checking current Account, Company, Membership, and coverage access…':'Sign in, then choose your Company workspace.'}</p>
     {error&&<p className="error" role="alert">{error}</p>}
-    {busy&&<p role="status">Checking your account and Company access…</p>}
-    {!signedIn?<button disabled={busy||!!configurationError} onClick={()=>void action(signIn)}>Sign in with Google</button>:<>
+    {(phase==='restoring'||phase==='authorizing')&&<p role="status">{phase==='restoring'?'Restoring Firebase authentication…':'Checking your account and Company access…'}</p>}
+    {phase==='signed-out'?<button disabled={busy||!!configurationError} onClick={()=>void action(signIn)}>Sign in with Google</button>:phase!=='restoring'?<>
       <div className="actions">{controls}</div>
       {session&&<><p>{session.email}</p><p>{session.entitlement}</p>
         <label>Company<select aria-label="Company" disabled={busy} value="" onChange={e=>{const id=e.currentTarget.value;e.currentTarget.value="";void action(()=>choose(id));}}><option value="">Choose a Company</option>{session.companies.map(c=><option key={c.id} value={c.id}>{c.name} · {c.role}</option>)}</select></label>
         {!session.companies.length&&<p>No active Company memberships yet. Ask your Company administrator for access, or create a Company with an eligible subscription.</p>}
         {session.canCreate&&<form onSubmit={e=>{e.preventDefault();void action(create);}}><h2>Create Company</h2><label>Company name<input required maxLength={300} value={name} onChange={e=>setName(e.target.value)}/></label><label>Contact email<input required type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><button disabled={busy}>Create Company</button></form>}
       </>}
-    </>}
+      </>:null}
   </section></main>;
   return <div className="shell"><aside><div className="brand"><strong>HazCom Navigator</strong><span>Windows workspace</span></div>
     <label className="company-label">Active Company<select value={company.id} disabled={busy} onChange={e=>{const id=e.currentTarget.value;e.currentTarget.value=company.id;void action(()=>choose(id));}}><option value="">Choose another Company</option>{session.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
@@ -107,3 +135,9 @@ export function Workspace({uid,company,error}:{uid:string;company:CompanyAccess;
   }}/>} {error&&<p role="alert">{error}</p>}</>;
 }
 function message(error:unknown){return error instanceof Error?error.message:String(error);}
+function authorizationMessage(error:unknown){
+ const value=message(error),code=typeof error==='object'&&error!==null&&'code'in error?String((error as {code?:unknown}).code):'';
+ if(!navigator.onLine||code.includes('unavailable')||code.includes('network-request-failed')||code.includes('deadline-exceeded'))return 'Connect to the internet to verify your Company access. Your local workspace remains on this device.';
+ if(code.includes('unauthenticated')||code.includes('user-disabled')||code.includes('user-token-expired')||code.includes('invalid-user-token'))return 'Your saved sign-in is no longer valid. Sign in again to continue.';
+ return value;
+}

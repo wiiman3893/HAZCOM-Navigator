@@ -1,22 +1,24 @@
 import {observe} from '../diagnostics/session';
 import { initializeApp, getApp } from 'firebase/app';
-import { initializeAuth, inMemoryPersistence, GoogleAuthProvider, signInWithCredential, signOut, type Auth } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithCredential, signOut, type Auth } from 'firebase/auth';
 import { collection, doc, getDocFromServer, getDocsFromServer, getFirestore, type Firestore } from 'firebase/firestore';
 import {resolveCommercial} from '@hazcom/core';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import {readWindowsEnvironment} from '../config/environment';
+import {initializeWindowsAuth} from './persistence';
 
 const environmentResult=readWindowsEnvironment(import.meta.env);
 export const windowsEnvironment=environmentResult.config;
 export const firebaseConfig=windowsEnvironment?.firebase;
 export const configurationError=environmentResult.error;
 
-// CODEX HANDOFF: Session stays in memory until OS-protected credential storage is designed.
-// Google credentials are obtained in the system browser; never in the Tauri webview.
+// Firebase owns durable session persistence in the Tauri WebView2 application
+// profile. Google credentials are obtained in the system browser; never in the
+// Tauri webview, Company SQLite, backups, diagnostics, logs, or URLs.
 export let auth: Auth;
 export let db: Firestore;
-if(firebaseConfig){const app=initializeApp(firebaseConfig);auth=initializeAuth(app,{persistence:inMemoryPersistence});db=getFirestore(app);}
+if(firebaseConfig){const app=initializeApp(firebaseConfig);auth=initializeWindowsAuth(app);db=getFirestore(app);}
 export const call=async<T=unknown>(name:string,data:unknown)=>(await httpsCallable<unknown,T>(getFunctions(getApp(),'us-central1'),name)(data)).data;
 async function signInImpl(){
   if(!windowsEnvironment||!firebaseConfig)throw Error(configurationError||'Windows configuration is invalid.');
@@ -29,6 +31,7 @@ export const signOutAccount=()=>observe('auth.signout',()=>signOut(auth));
 export type Role='administrator'|'manager'|'member';
 export interface CompanyAccess {id:string;name:string;contact_email:string;role:Role}
 export interface AccountSession {uid:string;email:string;companies:CompanyAccess[];activeCompanyId:string|null;entitlement:string;canCreate:boolean}
+export interface CompanyCoverageAuthorization {companyId:string;effectiveRole:Role;capabilities:{canAuthor:boolean;canExportBackup:boolean}}
 
 export async function verifyCompany(uid:string,companyId:string):Promise<CompanyAccess>{
   if(auth.currentUser?.uid!==uid || !navigator.onLine)throw Error('Connect and sign in to open this workspace.');
@@ -53,4 +56,13 @@ export async function loadAccount(uid:string):Promise<AccountSession>{
   const label=commercial.plan==='demo'?`${commercial.demoType==='pro'?'Pro':'Company'} Demo`:commercial.plan==='pro'?'Pro':commercial.plan==='company'?'Company':'No personal subscription';
   const state=commercial.status==='active'?'Active':commercial.status==='grace'?'Grace and export period':'Read access only';
   return {uid,email:auth.currentUser?.email??'',companies:companies.sort((a,b)=>a.name.localeCompare(b.name)),activeCompanyId:account.get('activeCompanyId')??null,entitlement:`${label} · ${state}`,canCreate};
+}
+
+/** A restored Firebase identity is never sufficient to expose a Company. */
+export async function verifyActiveCompanyAuthorization(uid:string,company:CompanyAccess):Promise<CompanyCoverageAuthorization>{
+  if(auth.currentUser?.uid!==uid||!navigator.onLine)throw Error('Connect to the internet to verify your Company access.');
+  const result=await call<CompanyCoverageAuthorization>('getCompanyCoverageStatus',{companyId:company.id});
+  if(auth.currentUser?.uid!==uid||result.companyId!==company.id||result.effectiveRole!==company.role)throw Error('Company access changed. Sign in again or refresh your access.');
+  if(company.role!=='member'&&!result.capabilities.canAuthor&&!result.capabilities.canExportBackup)throw Error('Company coverage does not currently permit Windows workspace access.');
+  return result;
 }

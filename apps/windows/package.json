@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test:auth": "node --test test/environment.test.mjs",
+    "test:auth:persistence": "playwright test --config test/auth-persistence.playwright.config.mjs",
     "tauri": "tauri"
   },
   "dependencies": {
