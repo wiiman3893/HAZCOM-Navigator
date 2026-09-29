@@ -3,7 +3,7 @@ import {analyzeSdsPdf,splitDrafts,mergeDrafts,normalizeDrafts} from './pdf-impor
 import {analyzeSdsCandidate,normalizePageText,SDS_EXTRACTION_VERSION,SDS_OCR_VERSION} from './sds-extraction.js';
 export {analyzeSdsPdf,splitDrafts,mergeDrafts,normalizeDrafts} from './pdf-import.js';
 export {analyzeSdsCandidate,extractSdsFields,normalizePageText,parseSdsSections,SDS_EXTRACTION_VERSION,SDS_OCR_VERSION} from './sds-extraction.js';
-export {chemicalInventoryReport,reportCsv,REPORT_COLUMNS} from './reports.js';
+export {chemicalInventoryReport,complianceStatusReport,trainingStatusReport,reportCsv,REPORT_COLUMNS} from './reports.js';
 
 export const fields={
  work_area:['name','location','poc_name','poc_email','poc_phone_number','description'],

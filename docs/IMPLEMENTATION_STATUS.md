@@ -147,7 +147,7 @@ The repository also includes:
 
 ## Reports & Export Phase 1
 
-Checkpoint 1 adds a read-only, offline Chemical Inventory report and compact Company HazCom Summary to the Windows Reports & Export screen without changing publication behavior. Report rows come from the selected Company workspace's canonical authoring snapshot, exclude trashed/removed records, preserve Work Area placement context, and export as deterministic UTF-8 CSV without internal IDs or SDS contents. Metadata-only diagnostics cover report open and export outcomes. See [Reports & Export Phase 1 handoff](WORK_RESUME_REPORTS_PHASE1.md).
+Reports & Export Phase 1 adds a read-only, offline Chemical Inventory report, Compliance Status report, Training Status report, and compact Company HazCom Summary to the Windows Reports & Export screen without changing publication behavior. Report rows come from the selected Company workspace's canonical authoring snapshot, exclude trashed/removed records, preserve relationship context, and export as deterministic UTF-8 CSV without internal IDs or SDS contents. Compliance and training reports reuse the service's existing derived status values. Metadata-only diagnostics cover report open and export outcomes. See [Reports & Export Phase 1 handoff](WORK_RESUME_REPORTS_PHASE1.md).
 
 ## Next implementation slices
 
@@ -156,7 +156,7 @@ Checkpoint 1 adds a read-only, offline Chemical Inventory report and compact Com
 3. **Exercise the mobile/published-member path on physical devices.** Validate the existing replica adapter and build authorized published-data screens.
 4. **Harden production Windows authentication/session behavior.** Replace the development-only auth boundary with the approved packaged OAuth/session strategy and define the offline entitlement policy.
 5. **Add optional Bulk SDS assistance.** Consider conservative duplicate match reasons and an explicit mid-run OCR Cancel control; explicit update and safe resume already work without these additions.
-6. **Build reporting/export/handoff outputs.**
+6. **Extend reporting only from measured product needs.** Phase 1 operational reports and CSV exports are implemented; future formats or pagination should follow actual customer usage.
 7. **Integrate the eventual billing provider and webhook lifecycle.**
 
 ## Frozen recovery checkpoints
