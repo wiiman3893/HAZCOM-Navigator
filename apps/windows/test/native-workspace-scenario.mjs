@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createInterface} from 'node:readline';
-import {authoringService} from '../../../packages/authoring/src/index.js';
+import {authoringService,chemicalInventoryReport} from '../../../packages/authoring/src/index.js';
 import {exportCompanyBackup,prepareNativeCompanyRestore} from '../../../packages/sync/src/backup.js';
 import {buildPublication} from '../../../packages/sync/src/projection.js';
 const lines=createInterface({input:process.stdin})[Symbol.asyncIterator]();
@@ -68,8 +68,11 @@ try{
  await b.service.update('worker','worker',{name:'Only B'});
  a=await open('restored-copy-a');
  assert.equal((await a.service.snapshot()).worker[0].name,'Synthetic Worker');
+ const restoredReport=chemicalInventoryReport(await a.service.snapshot());
  assert.deepEqual((await a.backup()).tables,edited.tables);
  primary=await open('primary');
+ const primaryReport=chemicalInventoryReport(await primary.service.snapshot());
+ assert.equal(primaryReport[0].workArea,'Mixing');assert.equal(restoredReport[0].workArea,'Edited restore A');assert.notDeepEqual(primaryReport,restoredReport);
  assert.deepEqual((await primary.backup()).tables,original.tables);
  assert.deepEqual((await primary.backup()).attachments,original.attachments);
  // Coordinate real mutations at known export read boundaries, without sleeps.
