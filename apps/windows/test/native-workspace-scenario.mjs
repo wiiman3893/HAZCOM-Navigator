@@ -1,6 +1,7 @@
 // Test-only pipe bridge: actual authoring/backup services call the native session
 // implementation against disposable SQLite/files. No Firebase or user data.
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {createInterface} from 'node:readline';
 import {authoringService} from '../../../packages/authoring/src/index.js';
 import {exportCompanyBackup,prepareNativeCompanyRestore} from '../../../packages/sync/src/backup.js';
@@ -12,7 +13,7 @@ const companyId='roundtrip-company';
 async function open(id){
  const lease=await request({op:'activate',id}),token=lease.token;
  const sql={select:(statement,values=[])=>request({op:'select',token,statement,values}),batch:statements=>request({op:'batch',token,statements})};
- const files={stage:(company,id,bytes)=>request({op:'stage',token,company,id,bytes:[...bytes]}),stageImport:(company,id,bytes)=>request({op:'stage',token,company,id,bytes:[...bytes],import:true}),read:async path=>new Uint8Array(await request({op:'read',token,path}))};
+ const files={stage:(company,id,bytes)=>request({op:'stage',token,company,id,bytes:[...bytes]}),stageImport:(company,id,bytes)=>request({op:'stage',token,company,id,bytes:[...bytes],import:true}),materialize:async(_sessionId,startPage,endPage)=>({bytes:pdf,sha256:createHash('sha256').update(pdf).digest('hex'),sizeBytes:pdf.length,pageCount:endPage-startPage+1,materializationVersion:1}),read:async path=>new Uint8Array(await request({op:'read',token,path}))};
  const service=authoringService({sql,files,companyId,authorize:async()=>({companyId,role:'manager',active:true}),today:()=> '2026-09-27'});
  const journal={get:async key=>{const value=await request({op:'journal',token,key,value:null});return value?JSON.parse(value):null;},put:(key,value)=>request({op:'journal',token,key,value:JSON.stringify(value)})};
  return {lease,sql,files,journal,service,backup:()=>exportCompanyBackup(sql,files,companyId),projection:()=>buildPublication(sql,companyId,files)};
@@ -46,12 +47,14 @@ try{
  await a.service.trash('work_area_product','placement',true);
  await a.service.importSds('product',new Uint8Array([...pdf,10]),'same.pdf','sds-added');
  await a.service.importSdsBatch(pdf,'bulk.pdf','bulk-a');
- assert.equal((await a.service.snapshot()).sds_import_session.length,1);
+ let bulkSnapshot=await a.service.snapshot(),bulkDraft=bulkSnapshot.sds_import_draft[0];assert.equal(bulkSnapshot.sds_import_session.length,1);
+ await a.service.reviewSdsImportCandidate(bulkDraft.id,{product_name:'Approved Bulk Cleaner',manufacturer:'Synthetic Safety',sds_date:'2026-09-27',cas_numbers:'67-64-1'});
+ await a.service.approveSdsImportCandidate(bulkDraft.id,{action:'create',productId:'bulk-product',attachmentId:'bulk-sds'});
  await request({op:'close'});
  a=await open('restored-copy-a');
- assert.equal((await a.service.snapshot()).sds_import_session.length,1);
+ bulkSnapshot=await a.service.snapshot();assert.equal(bulkSnapshot.sds_import_session.length,1);assert.equal(bulkSnapshot.chemical_product.find(row=>row.id==='bulk-product').product_name,'Approved Bulk Cleaner');assert.equal(bulkSnapshot.attachments.find(row=>row.id==='bulk-sds').sha256,createHash('sha256').update(pdf).digest('hex'));
  const edited=await a.backup(),projection=await a.projection();
- assert.equal(edited.attachments.length,2);
+ assert.equal(edited.attachments.length,3);assert.equal(Object.hasOwn(edited.tables,'sds_import_session'),false);assert.equal(edited.tables.chemical_product.some(row=>row.id==='bulk-product'),true);assert.equal(edited.attachments.find(file=>file.attachmentId==='bulk-sds').sha256,createHash('sha256').update(pdf).digest('hex'));
  assert.equal(projection.dataset.trainingEvents.length,1);
  assert.equal(projection.dataset.workAreas[0].name,'Edited restore A');
  await request({op:'restore',id:'copy-b',plan:await prepareNativeCompanyRestore(edited)});
@@ -61,7 +64,7 @@ try{
  assert.deepEqual(copied.attachments,edited.attachments);
  assert.deepEqual((await b.projection()).dataset,projection.dataset);
  // Backup v2 covers committed authoring/SDS, not unfinished Bulk review sessions.
- assert.equal((await b.service.snapshot()).sds_import_session.length,0);
+ const restoredSnapshot=await b.service.snapshot();assert.equal(restoredSnapshot.sds_import_session.length,0);assert.equal(restoredSnapshot.chemical_product.find(row=>row.id==='bulk-product').product_name,'Approved Bulk Cleaner');assert.equal(restoredSnapshot.attachments.find(row=>row.id==='bulk-sds').size_bytes,pdf.length);assert.deepEqual(await b.service.readSds('bulk-product','bulk-sds'),pdf);
  await b.service.update('worker','worker',{name:'Only B'});
  a=await open('restored-copy-a');
  assert.equal((await a.service.snapshot()).worker[0].name,'Synthetic Worker');

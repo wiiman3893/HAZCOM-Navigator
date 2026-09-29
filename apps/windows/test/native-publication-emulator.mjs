@@ -1,5 +1,8 @@
 // Only invoked by the disposable Rust SQLite bridge with explicit emulator guards.
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {initializeApp,deleteApp} from 'firebase/app';
 import {getAuth,connectAuthEmulator,signInWithCredential,GoogleAuthProvider} from 'firebase/auth';
 import {getFirestore,connectFirestoreEmulator,terminate} from 'firebase/firestore';
@@ -9,11 +12,15 @@ import {initializeApp as initializeAdmin,deleteApp as deleteAdmin} from 'firebas
 import {getFirestore as adminFirestore,Timestamp} from 'firebase-admin/firestore';
 import {publish} from '../../../packages/sync/src/publisher-v2.js';
 import {firebaseTransport} from '../../../packages/sync/src/firebase.js';
+import {receiver} from '../../../packages/sync/src/receiver.js';
+import {sqliteReplica,REPLICA_SCHEMA_SQL} from '../../../packages/sync/src/sqlite.js';
+import {nodeSqlite,nodeFiles} from '../../../packages/sync/src/node.js';
 import {createPublicationWorkflow,bindWorkspacePublication} from '../src/data/publication-workflow.ts';
 import {WorkspaceLifecycle} from '../src/data/workspace-lifecycle.ts';
 
 export async function verifyNativePublication({open,companyId}){
  const lifecycle=new WorkspaceLifecycle();let activeToken=null;
+ let replicaDb=null,replicaFolder=null;
  const select=id=>lifecycle.change(async()=>{const workspace=await open(id);activeToken=workspace.lease.token;return workspace;});
  const projectId='demo-hazcom-navigator';
  assert.equal(process.env.GCLOUD_PROJECT,projectId);
@@ -83,6 +90,7 @@ export async function verifyNativePublication({open,companyId}){
    const expected=ready.projection.attachments.find(a=>a.attachmentId===attachment.attachmentId);
    assert.ok(expected);assert.deepEqual(new Uint8Array(await transport.download(attachment.relativePath,attachment.sizeBytes)),await a.files.read(expected.localPath));
   }
+  replicaFolder=await mkdtemp(path.join(tmpdir(),'hazcom-bulk-replica-'));replicaDb=nodeSqlite(path.join(replicaFolder,'replica.db'),REPLICA_SCHEMA_SQL);const replicaFiles=await nodeFiles(path.join(replicaFolder,'files')),replica=sqliteReplica(replicaDb),replicaClient=receiver({transport,replica,files:replicaFiles});const firstImport=await replicaClient.sync(companyId);assert.equal(firstImport.changed,true);assert.equal(replicaDb.db.prepare("SELECT product_name FROM chemical_product WHERE id='bulk-product'").get().product_name,'Approved Bulk Cleaner');assert.equal(replicaDb.db.prepare("SELECT count(*) n FROM sqlite_master WHERE type='table' AND name LIKE 'sds_import_%'").get().n,0);const firstReplicaState=await replica.state();
   const reopenedB=await select('restored-copy-b'),secondWorkflow=workflow(reopenedB),secondReady=await secondWorkflow.check(companyId);
   assert.equal(secondReady.attempt,null);assert.equal(secondReady.context.currentRevisionId,first.revisionId);
   loseFinalization=true;
@@ -92,8 +100,9 @@ export async function verifyNativePublication({open,companyId}){
   const second=recovered.current;assert.notEqual(second.revisionId,first.revisionId);
   assert.equal(second.revisionNumber,first.revisionNumber+1);
   assert.equal((await transport.records(companyId,second.revisionId,'workers',await transport.access(companyId)))[0].name,'Changed during row export');
+  const corruptTransport={...transport,download:async(relativePath,sizeBytes)=>{const bytes=new Uint8Array(await transport.download(relativePath,sizeBytes));bytes[0]^=255;return bytes;}};await assert.rejects(receiver({transport:corruptTransport,replica,files:replicaFiles}).sync(companyId),/hash|PDF/i);assert.deepEqual(await replica.state(),firstReplicaState);assert.equal(replicaDb.db.prepare("SELECT product_name FROM chemical_product WHERE id='bulk-product'").get().product_name,'Approved Bulk Cleaner');const secondImport=await replicaClient.sync(companyId);assert.equal(secondImport.changed,true);assert.equal((await replica.state()).revisionId,second.revisionId);assert.equal(replicaDb.db.prepare("SELECT count(*) n FROM chemical_product WHERE id='bulk-product'").get().n,1);
   const primary=await select('primary');assert.equal(await primary.journal.get(uid+'/ui-attempt/'+companyId),null);
   assert.equal(await primary.journal.get(`${companyId}/${first.revisionId}`),null);
-  console.error('PASS native restored A/B publication, separate journals/SDS/fingerprints, interrupted retry, stale tokens and untouched primary journal');
- }finally{await terminate(db);await deleteApp(app);await deleteAdmin(admin);}
+  console.error('PASS native restored A/B publication, approved Bulk child, independent atomic replica/corruption fallback, separate journals/SDS/fingerprints, interrupted retry, stale tokens and untouched primary journal');
+ }finally{replicaDb?.close();if(replicaFolder)await rm(replicaFolder,{recursive:true,force:true});await terminate(db);await deleteApp(app);await deleteAdmin(admin);}
 }
