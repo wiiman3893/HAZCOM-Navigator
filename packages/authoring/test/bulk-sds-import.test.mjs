@@ -169,3 +169,9 @@ test('OCR preserves sparse embedded text on mixed pages and rejects unusable out
   await service.importSdsBatch(pdf(['']),'unusable.pdf','unusable-batch');output='...';result=await service.ocrSdsImportPage('unusable-batch',1);assert.equal(result.status,'manual_required');assert.equal(result.failureCode,'OCR_TEXT_UNUSABLE');snapshot=await service.snapshot();page=snapshot.sds_import_page.find(row=>row.session_id==='unusable-batch');assert.equal(page.ocr_required,1);assert.equal(page.ocr_status,'manual_required');assert.equal(snapshot.chemical_product.length,0);
  }finally{f.sql.close();}
 });
+
+test('moderate OCR batch retries only failed pages and never duplicates Products',async()=>{
+ const f=await setup();let calls=0,fail=true;f.files.ocrPage=async(_session,page)=>{calls++;if(page===13&&fail)throw Error('OCR_PAGE_FAILED');return {rawText:`Synthetic safety data page ${page} with enough recognized text`,language:'en-US',ocrVersion:1};};
+ try{const service=f.service('company-a');await service.importSdsBatch(pdf(Array(50).fill('')),'moderate-scan.pdf','moderate-batch');let results=await service.processSdsImportOcr('moderate-batch');assert.equal(results.length,50);assert.equal(results.filter(row=>row.status==='failed').length,1);assert.equal(calls,50);let snapshot=await service.snapshot();assert.equal(snapshot.sds_import_page.filter(row=>row.ocr_status==='completed').length,49);assert.equal(snapshot.sds_import_page.filter(row=>row.ocr_status==='failed').length,1);fail=false;results=await service.processSdsImportOcr('moderate-batch');assert.equal(results.length,1);assert.equal(results[0].pageNumber,13);assert.equal(calls,51);assert.deepEqual(await service.processSdsImportOcr('moderate-batch'),[]);snapshot=await service.snapshot();assert.equal(snapshot.sds_import_page.every(row=>row.ocr_status==='completed'),true);assert.equal(snapshot.sds_import_draft.length,1);assert.equal(snapshot.chemical_product.length,0);
+ }finally{f.sql.close();}
+});
