@@ -30,7 +30,7 @@ Reports & Export has readiness, Publish/Retry, staged progress, current revision
 
 ## Commercial entitlement V1 source checkpoint — local/emulator only
 
-The canonical [commercial contract](COMMERCIAL_CONTRACT_V1.md) and [entitlement handoff](ENTITLEMENT_ENGINE_HANDOFF.md) describe a validated Demo/capability foundation. Account bootstrap, Demo limits/switching, trusted publication gates, local authoring limits, synthetic billing events, Pro-seat inheritance, takeover, backup-email verification with a mock outbox, emulator-only cleanup, and versioned local backup round-trip have automated coverage. A Windows service exports that backup during paid grace/export. Production email/cloud delivery, scheduled cleanup, native restore, and real billing integration remain future work. The development Firebase project was not deployed.
+The canonical [commercial contract](COMMERCIAL_CONTRACT_V1.md) and [entitlement handoff](ENTITLEMENT_ENGINE_HANDOFF.md) describe a validated Demo/capability foundation. Account bootstrap, Demo limits/switching, trusted publication gates, local authoring limits, synthetic billing events, Pro-seat inheritance, takeover, backup-email verification with a mock outbox, emulator-only cleanup, and versioned local backup round-trip have automated coverage. A Windows service exports that backup during paid grace/export. Production email/cloud delivery, scheduled cleanup, and real billing integration remain future work. Native restore was completed in the later commercial/workspace convergence milestone. The development Firebase project was not deployed as part of this entitlement checkpoint.
 
 ## Bulk SDS Import Phase 2 — validated implementation
 
@@ -65,7 +65,7 @@ A native Manager acceptance pass created, edited, persisted, trashed/restored, a
 
 See [Windows authoring handoff](WINDOWS_AUTHORING_HANDOFF.md) and [Windows authentication handoff](WINDOWS_AUTH_HANDOFF.md).
 
-The Reports & Export publication controls are now implemented in source; real-cloud deployment and acceptance remain separate work.
+The Reports & Export publication controls are implemented, and development-cloud publication has been proven. Production rollout and the remaining explicit live-security acceptance checks remain separate work.
 
 ## Scalable publication and replication
 
@@ -151,13 +151,16 @@ Reports & Export Phase 1 adds a read-only, offline Chemical Inventory report, Co
 
 ## Next implementation slices
 
-1. **Wire Windows Publish UI to schema 2.** Add publication readiness validation, Publish/progress/retry/status behavior, and confirmation of the resulting current revision using the already-validated scalable publication service.
-2. **Coordinate schema 2 cloud deployment.** Deploy the new Functions, indexes, rules and compatible clients together; configure staged cleanup scheduling/quotas and perform a real-cloud scalable publication smoke test.
-3. **Exercise the mobile/published-member path on physical devices.** Validate the existing replica adapter and build authorized published-data screens.
-4. **Harden production Windows authentication/session behavior.** Replace the development-only auth boundary with the approved packaged OAuth/session strategy and define the offline entitlement policy.
-5. **Add optional Bulk SDS assistance.** Consider conservative duplicate match reasons and an explicit mid-run OCR Cancel control; explicit update and safe resume already work without these additions.
-6. **Extend reporting only from measured product needs.** Phase 1 operational reports and CSV exports are implemented; future formats or pagination should follow actual customer usage.
-7. **Integrate the eventual billing provider and webhook lifecycle.**
+The remaining roadmap is now dominated by commercialization, member/mobile delivery, and release hardening rather than missing Windows authoring foundations.
+
+1. **Harden production Windows authentication and session behavior.** Replace the development-only loopback/in-memory auth boundary with the approved packaged OAuth/PKCE return strategy, secure session persistence, restart/recovery behavior, and a defined bounded offline authorization policy.
+2. **Build and exercise the published-member/mobile experience.** Complete authorized Company/Work Area/Product/SDS browsing, assignment/training views, offline replica synchronization, and physical-device acceptance using the existing published-replica foundation.
+3. **Integrate real billing and commercial lifecycle plumbing.** Add the selected billing provider, checkout/subscription management, verified idempotent webhooks, reconciliation, production email, scheduled lifecycle/cleanup jobs where required, and the authorized rollout/backfill of current commercial fields.
+4. **Complete production rollout and security acceptance.** Prove the remaining live authenticated nonmember, Member, Demo, and privileged-write denials; perform fresh signed-in native acceptance; define deployment/rollback, monitoring, rate/size limits, retention/backup operations, and related production safeguards.
+5. **Finish release engineering.** Add the production Windows installer/signing/update path, environment configuration, onboarding/support/legal/privacy work, performance/edge-case hardening, and release acceptance.
+6. **Add optional product refinements only when justified by use.** Bulk SDS fuzzy duplicate assistance, an explicit mid-run OCR Cancel control, report PDF/extra formats, additional filters, or pagination are optional follow-ons rather than blockers for the completed core workflows.
+
+Completed milestones should not be reopened merely because older historical sections describe their pre-completion state.
 
 ## Frozen recovery checkpoints
 
