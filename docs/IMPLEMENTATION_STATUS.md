@@ -145,6 +145,10 @@ The repository also includes:
 - scalable publication/replication harnesses
 - Windows authoring tests
 
+## Reports & Export Phase 1
+
+Checkpoint 1 adds a read-only, offline Chemical Inventory report and compact Company HazCom Summary to the Windows Reports & Export screen without changing publication behavior. Report rows come from the selected Company workspace's canonical authoring snapshot, exclude trashed/removed records, preserve Work Area placement context, and export as deterministic UTF-8 CSV without internal IDs or SDS contents. Metadata-only diagnostics cover report open and export outcomes. See [Reports & Export Phase 1 handoff](WORK_RESUME_REPORTS_PHASE1.md).
+
 ## Next implementation slices
 
 1. **Wire Windows Publish UI to schema 2.** Add publication readiness validation, Publish/progress/retry/status behavior, and confirmation of the resulting current revision using the already-validated scalable publication service.

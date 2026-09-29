@@ -23,6 +23,7 @@ const s=get('ui-company','manager');
 await s.create('work_area',{name:'Maintenance Shop',location:'Building A',poc_name:'Safety Lead',poc_email:'safety@example.test',poc_phone_number:'555-0100',description:'Synthetic test area'},'ui-area');
 await s.create('chemical_product',{product_name:'Synthetic Cleaner',chemical_names:'Acetone',cas_numbers:'67-64-1',manufacturer:'Example manufacturer',sds_date:'2026-01-01'},'ui-chemical');
 await s.create('worker',{name:'Synthetic Worker',email:'worker@example.test',phone:''},'ui-worker');
+await s.create('work_area_product',{work_area_id:'ui-area',chemical_product_id:'ui-chemical',quantity:'2 bottles',storage_location:'Cabinet A',added_date:'2026-09-28'},'ui-placement');
 const server=await createServer({configFile:false,root:path.join(repo,'apps/windows/test/ui'),plugins:[{name:'workspace-test-adapters',enforce:'pre',resolveId(id,importer){if(importer?.split(path.sep).join('/').endsWith('/src/App.tsx')&&['./auth/firebase','./data/database','./data/authoring','./data/publication','./data/backup','./AuthoringWorkspace'].includes(id))return path.join(repo,'apps/windows/test/ui/workspace-adapters.tsx');}},react(),{name:'synthetic-publication-api',configureServer(server){server.middlewares.use('/publication-api',async(req,res)=>{
  try{
   if(req.method!=='POST'||req.headers.origin!=='http://127.0.0.1:1435'||req.headers['content-type']!=='application/json')throw Error('Local test origin required');

@@ -34,6 +34,16 @@ test('Readable desktop layouts, invalid input retained and empty search states',
  await page.getByRole('button',{name:'Chemical Library',exact:true}).click();await page.getByRole('button',{name:'Add chemical product'}).click();const form=page.getByRole('region',{name:'Record form'});await form.getByLabel('Product name').fill('Invalid CAS retained');await form.getByLabel('Manufacturer').fill('Test');await form.getByLabel('CAS numbers').fill('not-a-CAS');await form.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByRole('alert')).toContainText('CAS numbers');await expect(form.getByLabel('CAS numbers')).toHaveValue('not-a-CAS');await form.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByLabel('Search',{exact:true}).fill('no match deliberately');await expect(page.getByText('No records match. Create a record or clear filters.')).toBeVisible();
 });
 
+test('Chemical Inventory report filters the selected workspace and exports deterministic CSV',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Reports & Export',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Company HazCom Summary'})).toBeVisible();await expect(page.getByRole('heading',{name:'Chemical Inventory by Work Area'})).toBeVisible();
+ const report=page.getByRole('region',{name:'Chemical Inventory report'});await expect(report.getByText('Synthetic Cleaner',{exact:true})).toBeVisible();await expect(report.getByRole('cell',{name:/2 bottles/})).toContainText('Cabinet A');
+ await report.getByLabel('Search').fill('67-64-1');await expect(report.getByText('Synthetic Cleaner',{exact:true})).toBeVisible();await report.getByLabel('Search').fill('does not exist');await expect(report.getByText('No active inventory matches these filters.')).toBeVisible();await report.getByLabel('Search').fill('');
+ const pending=page.waitForEvent('download');await report.getByRole('button',{name:'Export CSV'}).click();const download=await pending;expect(download.suggestedFilename()).toBe('hazcom-chemical-inventory.csv');
+ const csv=await (await download.createReadStream()).toArray();expect(Buffer.concat(csv).toString('utf8')).toContain('Maintenance Shop,Building A,Synthetic Cleaner,Example manufacturer,67-64-1,2 bottles,Cabinet A');
+ await page.getByLabel('Test Company').selectOption('empty-company');await page.getByRole('button',{name:'Reports & Export',exact:true}).click();await expect(page.getByText('Synthetic Cleaner',{exact:true})).toHaveCount(0);
+});
+
 test('Paid Manager publishes a Company draft and sees later unpublished changes',async({page})=>{
  await page.goto('/');
  await page.getByRole('button',{name:'Chemical Library',exact:true}).click();
@@ -41,15 +51,6 @@ test('Paid Manager publishes a Company draft and sees later unpublished changes'
  await page.getByRole('button',{name:'View details'}).click();
  await page.getByLabel('Choose / replace PDF').setInputFiles({name:'publication-synthetic.pdf',mimeType:'application/pdf',buffer:Buffer.from(dummyPdf('Publication UI'))});
  await expect(page.getByText(/Current draft · publication-synthetic.pdf/)).toBeVisible();
- await page.getByRole('button',{name:'Work Areas',exact:true}).click();
- await page.getByLabel('Search',{exact:true}).fill('Maintenance');
- await page.getByRole('button',{name:'View details'}).click();
- await page.getByRole('button',{name:'Add Chemical to Work Area'}).click();
- const form=page.getByRole('region',{name:'Record form'});
- await form.getByRole('combobox',{name:'Chemical Product'}).selectOption('ui-chemical');
- await form.getByLabel('Quantity').fill('2 bottles');
- await form.getByLabel('Storage location').fill('Cabinet A');
- await form.getByRole('button',{name:'Save',exact:true}).click();
  await page.getByRole('button',{name:'Reports & Export',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Readiness: READY'})).toBeVisible();
  await page.getByRole('button',{name:'Publish Company'}).click();
@@ -59,6 +60,7 @@ test('Paid Manager publishes a Company draft and sees later unpublished changes'
  await page.getByLabel('Search',{exact:true}).fill('Maintenance');
  await page.getByRole('button',{name:'View details'}).click();
  await page.getByRole('button',{name:'Edit',exact:true}).click();
+ const form=page.getByRole('region',{name:'Record form'});
  await form.getByLabel('Location',{exact:true}).fill('Updated shop location');
  await form.getByRole('button',{name:'Save',exact:true}).click();
  await page.getByRole('button',{name:'Reports & Export',exact:true}).click();

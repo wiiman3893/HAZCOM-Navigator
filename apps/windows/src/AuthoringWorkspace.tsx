@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {fields,filterRows,summary,localDate} from '@hazcom/authoring';
 import PublicationPanel from './PublicationPanel';
+import ReportsPanel from './ReportsPanel';
 import {diagnostics,instrumentAuthoring,screenContext} from './diagnostics/session';
 import type {PublicationProgress,Readiness} from './data/publication-workflow';
 
@@ -79,7 +80,7 @@ export default function AuthoringWorkspace({company,open,administration,publicat
     {kind==='worker'&&<><p>This is a business Worker record. A Firebase Account is linked separately by a Company Administrator.</p><h3>Active and historical assignments</h3>{!record.deleted_at&&<button disabled={busy||!!form} onClick={()=>edit('work_area_assignment',null,{work_area_id:'',worker_id:record.id})}>Assign to Work Area</button>}{assignmentTable(data.work_area_assignment.filter((a:any)=>a.worker_id===record.id))}<h3>Training history</h3>{data.work_area_assignment.filter((a:any)=>a.worker_id===record.id).map((a:any)=><div key={a.id}><h4>{name('work_area',a.work_area_id)}</h4>{history('training_event','work_area_assignment_id',a.id,'training_date')}</div>)}</>}
    </section>}
   </>}
-  {screen==='Reports & Export'&&(publication?<PublicationPanel company={company} service={publication} onBusy={setPublishing}/>:<section className="panel"><h2>Publication and reports status</h2><p>Publication is unavailable in this workspace.</p></section>)}
+  {screen==='Reports & Export'&&<><ReportsPanel company={company} data={data}/>{publication?<PublicationPanel company={company} service={publication} onBusy={setPublishing}/>:<section className="panel"><h2>Publication and reports status</h2><p>Publication is unavailable in this workspace.</p></section>}</>}
   {screen==='Company & Access Administration'&&<section className="panel"><h2>Company settings and access</h2><p>{company.name} · {company.contact_email}</p><p>Your role: {company.role}. Membership and settings changes use the existing trusted Firebase Functions.</p>{company.role!=='administrator'?<p>Company settings and access administration require an Administrator. Managers retain HazCom authoring access.</p>:administration?<><button disabled={busy||!!form} onClick={()=>setForm({kind:'company',values:{name:company.name,email:company.contact_email}})}>Edit Company</button><button disabled={busy||!!form} onClick={()=>void action(async()=>setMembers(await administration.members()),'Memberships refreshed.')}>Load memberships</button><button disabled={busy||!!form} onClick={()=>setForm({kind:'membership',values:{uid:'',role:'member',active:'true',workerId:''}})}>Add / update membership</button><ul>{members.map(m=><li key={m.uid}>{m.uid} · {m.role} · {m.active?'Active':'Inactive'} · Linked Worker: {m.workerId?name('worker',m.workerId):'None'}</li>)}</ul><p>The Account must already exist. Worker linking uses published Worker records; a draft-only Worker must be published first. No billing or Account creation is performed here.</p></>:<p>Cloud administration is unavailable in this local test harness.</p>}</section>}
  </main>;
 }
