@@ -5,20 +5,23 @@ import { collection, doc, getDocFromServer, getDocsFromServer, getFirestore, typ
 import {resolveCommercial} from '@hazcom/core';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import {readWindowsEnvironment} from '../config/environment';
 
-const env=import.meta.env;
-export const firebaseConfig={apiKey:env.VITE_FIREBASE_API_KEY,authDomain:env.VITE_FIREBASE_AUTH_DOMAIN,projectId:env.VITE_FIREBASE_PROJECT_ID,appId:env.VITE_FIREBASE_APP_ID};
-export const configurationError=Object.values(firebaseConfig).some(v=>!v) ? 'Firebase configuration is missing. Copy the repository .env.example to .env and restart the app.' : '';
+const environmentResult=readWindowsEnvironment(import.meta.env);
+export const windowsEnvironment=environmentResult.config;
+export const firebaseConfig=windowsEnvironment?.firebase;
+export const configurationError=environmentResult.error;
 
 // CODEX HANDOFF: Session stays in memory until OS-protected credential storage is designed.
 // Google credentials are obtained in the system browser; never in the Tauri webview.
 export let auth: Auth;
 export let db: Firestore;
-if(!configurationError){const app=initializeApp(firebaseConfig);auth=initializeAuth(app,{persistence:inMemoryPersistence});db=getFirestore(app);}
+if(firebaseConfig){const app=initializeApp(firebaseConfig);auth=initializeAuth(app,{persistence:inMemoryPersistence});db=getFirestore(app);}
 export const call=async<T=unknown>(name:string,data:unknown)=>(await httpsCallable<unknown,T>(getFunctions(getApp(),'us-central1'),name)(data)).data;
 async function signInImpl(){
+  if(!windowsEnvironment||!firebaseConfig)throw Error(configurationError||'Windows configuration is invalid.');
   if(!isTauri())throw Error('Open the Windows application to sign in with your system browser.');
-  const token=await invoke<string>('google_browser_sign_in',{config:firebaseConfig});
+  const token=await invoke<string>('google_browser_sign_in',{environment:windowsEnvironment.environment,config:firebaseConfig});
   await signInWithCredential(auth,GoogleAuthProvider.credential(token));
 }
 export const signIn=()=>observe('auth.signin',signInImpl);
