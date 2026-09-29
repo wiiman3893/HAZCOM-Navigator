@@ -1,6 +1,7 @@
 import {createServer} from 'vite';
 import react from '@vitejs/plugin-react';
 import {readFile,mkdtemp} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -13,6 +14,7 @@ const folder=await mkdtemp(path.join(tmpdir(),'hazcom-ui-'));
 const sql=nodeSqlite(path.join(folder,'ui.db'),REPLICA_SCHEMA_SQL+await readFile(path.join(repo,'database/migrations/003_authoring.sql'),'utf8')+await readFile(path.join(repo,'database/migrations/004_bulk_sds_import.sql'),'utf8')+await readFile(path.join(repo,'database/migrations/005_bulk_sds_extraction.sql'),'utf8')+await readFile(path.join(repo,'database/migrations/006_bulk_sds_materialization.sql'),'utf8')),files=await nodeFiles(path.join(folder,'attachments'));
 files.ocrAvailability=async()=>({status:'available',language:'en-US',ocrVersion:1});
 files.ocrPage=async(_sessionId,pageNumber)=>({rawText:`SECTION 1: Identification\nProduct Name: Synthetic OCR Product ${pageNumber}\nManufacturer: Example Safety Products`,language:'en-US',ocrVersion:1});
+files.materialize=async(_sessionId,startPage,endPage)=>{const bytes=new TextEncoder().encode('%PDF-1.4\nsynthetic child');return {bytes,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,pageCount:endPage-startPage+1,materializationVersion:1};};
 for(const id of ['ui-company','empty-company'])sql.db.prepare('INSERT INTO company(id,name,contact_email) VALUES (?,?,?)').run(id,id,'safety@example.test');
 const service=(companyId,role)=>authoringService({sql,files,companyId,authorize:async()=>({companyId,role,active:true})});
 const services=new Map();const get=(c,r)=>{const key=c+'/'+r;if(!services.has(key))services.set(key,service(c,r));return services.get(key);};

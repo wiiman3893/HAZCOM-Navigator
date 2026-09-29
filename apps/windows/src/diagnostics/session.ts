@@ -58,6 +58,7 @@ export function instrumentAuthoring<T extends object>(service:T):T{
   const fixed:Record<string,string>={snapshot:'snapshot',importSds:'sds.import',readSds:'sds.read',unlinkSds:'sds.unlink',importSdsBatch:'sds_batch.import',ocrSdsImportPage:'sds_batch.ocr_page',processSdsImportOcr:'sds_batch.ocr',splitSdsImportDraft:'sds_batch.split',mergeSdsImportDraft:'sds_batch.merge',saveSdsImportDrafts:'sds_batch.review_save',reviewSdsImportCandidate:'sds_batch.field_review',approveSdsImportCandidate:'sds_batch.candidate_approved'};
   if(!['create','update','trash',...Object.keys(fixed)].includes(String(key)))return value;
   return (...args:unknown[])=>{let operation=fixed[String(key)],context:Context={};
+   if(key==='approveSdsImportCandidate')operation=(args[1] as {action?:string}|undefined)?.action==='update'?'sds_batch.product_updated':'sds_batch.product_created';
    if(['create','update','trash'].includes(String(key))){operation=String(args[0])+'.'+(key==='trash'?(args[2]?'restore':'trash'):String(key));context.entity=typeof args[key==='create'?2:1]==='string'?args[key==='create'?2:1] as string:undefined;const input=args[key==='create'?1:2];if(key!=='trash'&&input&&typeof input==='object')context.fields=Object.keys(input);}
    else if(key==='importSds'||key==='readSds'||key==='unlinkSds')context.entity=String(args[0]);
    if(key==='importSds'||key==='importSdsBatch'){const bytes=args[key==='importSds'?1:0];if(bytes instanceof Uint8Array)context.bytes=bytes.byteLength;}
