@@ -32,7 +32,7 @@ Reports & Export has readiness, Publish/Retry, staged progress, current revision
 
 The canonical [commercial contract](COMMERCIAL_CONTRACT_V1.md) and [entitlement handoff](ENTITLEMENT_ENGINE_HANDOFF.md) describe a validated Demo/capability foundation. Account bootstrap, Demo limits/switching, trusted publication gates, local authoring limits, synthetic billing events, Pro-seat inheritance, takeover, backup-email verification with a mock outbox, emulator-only cleanup, and versioned local backup round-trip have automated coverage. A Windows service exports that backup during paid grace/export. Production email/cloud delivery, scheduled cleanup, native restore, and real billing integration remain future work. The development Firebase project was not deployed.
 
-## Bulk SDS Import Phase 2 — complete on task branch, pending final integration
+## Bulk SDS Import Phase 2 — validated implementation
 
 The Windows Chemical Library now implements the complete local Bulk workflow: managed source import, boundary review, embedded text, offline `Windows.Data.Pdf` + `Windows.Media.Ocr`, persisted retry/resume, sections and reviewed Product fields with evidence-page provenance, deterministic child PDFs, and explicit create-new or update-selected Product approval. Existing-Product updates preserve stable identity, relationships/events, and prior SDS history. Extraction never writes authoritative Product data without approval.
 

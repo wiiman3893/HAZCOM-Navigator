@@ -51,6 +51,20 @@ Validation at checkpoint 5:
 - emulator proof included begin/stage/upload/seal/validate/finalize, interrupted upload retry, lost-finalization recovery, approved Bulk Product/SDS reads, clean independent replica import, corrupted-download fallback, and revision-2 activation
 - Firebase project guard used only `demo-hazcom-navigator`; no deployment and no real Firebase mutation
 
-DO NOT CLAIM YET: explicit mid-run OCR cancellation, duplicate suggestions, broad final regression, or integration to main.
+Final merge-gate validation after checkpoint 6:
 
-Exact next action: run the complete regression bar, fix any concrete regression, then integrate to main only if every required suite is clean.
+- `npm test`: passed (core 13 Node tests plus core runner; SQLite validation; sync 10; authoring 24)
+- `npm run test:authoring:ui`: 12 passed
+- `npm run test:diagnostics`: 16 passed
+- `npm run test:windows:publication`: 12 passed
+- `npm run test:windows:publication:emulator`: passed with approved Bulk child and independent replica
+- `npm run test:firebase`: 24 passed
+- `npm run build`: passed for sync, authoring, Windows, and mobile (existing Windows chunk-size advisory only)
+- `npm run build -w @hazcom/firebase-functions`: passed
+- `cargo test --manifest-path apps/windows/src-tauri/Cargo.toml`: 21 passed
+- `npm run diagnostics:full`: command passed with no failing checks; overall WARN because the installed user workspace remains schema 3 until normal native open/migration and test runs regenerated tracked measurement files, which were restored before integration
+- `git diff --check`: passed
+
+DO NOT CLAIM: explicit mid-run OCR cancellation or duplicate suggestions. These optional UX items were deliberately deferred under the milestone merge rule; explicit update selection and safe retry/resume are complete.
+
+Exact next action: verify origin/main is still the recorded base, fast-forward the validated task head into main, and record final remote SHAs.
