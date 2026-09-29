@@ -11,6 +11,10 @@ Checkpoint 3 (`e8eec05`) implements the native offline OCR boundary with `Window
 
 The native acceptance fixture is a generated image-only PDF containing raster pixels and no PDF text objects. On the checkpoint host, Windows OCR was available with `en-US`; it recognized the synthetic Product name and CAS number. Service tests also prove two-page image-only processing, extraction persistence across service restart, completed-page reuse, mixed-page preservation, missing-language fallback, and unusable-text fallback. The current batch runner is sequential, saves after every page, and can be safely resumed; an explicit mid-run cancellation control is not yet implemented.
 
+Checkpoint 4 (`a95c103`) adds the explicit existing-Product approval choice. Update requires an active Company-owned Product, preserves its stable ID, unextracted chemical names, Work Area Product relationships, and SDS Verification Events, moves the former current SDS to `sds_history`, and writes the reviewed Product fields, verified child attachment/integrity, immutable materialization link, history, and approval state in one authoring commit. Child hash/page verification and managed-file staging happen before that commit. Focused adversarial tests prove both child hash rejection and forced managed-file write failure leave the prior Product, current SDS, integrity state, and unapproved candidate intact. Diagnostics distinguishes metadata-only `sds_batch.product_created` and `sds_batch.product_updated` operations.
+
+The Windows batch UI now requires a visible create/update choice and, for update, an explicit existing Product selection. Its acceptance test covers OCR, persisted field refresh, and update approval. That test found and fixed stale form state after OCR: the visible fields now refresh when the persisted extraction values change.
+
 Validation at checkpoint 2:
 
 - `npm run test:authoring`: 17 passed
@@ -28,6 +32,13 @@ Validation at checkpoint 3:
 - `npm run build`: passed (Windows and mobile production builds; existing Windows chunk-size warning only)
 - `git diff --check`: passed before checkpoint commit
 
-DO NOT CLAIM YET: explicit mid-run OCR cancellation, existing-Product update, duplicate suggestions, approved-child backup/restore acceptance, emulator publication, independent replica import, larger-batch resilience, broad final regression, or integration to main.
+Validation at checkpoint 4:
 
-Exact next action: implement the explicit existing-Product update path with stable Product identity, prior current SDS history preservation, staged-child verification before one logical commit, and adversarial failure tests proving the prior Product/SDS remains intact.
+- `npm run test:authoring`: 23 passed
+- `npm run test:diagnostics`: 16 passed
+- `npm run test:authoring:ui`: 12 passed before expanding the Bulk scenario
+- focused expanded Bulk UI acceptance: 1 passed (OCR through existing-Product update)
+
+DO NOT CLAIM YET: explicit mid-run OCR cancellation, duplicate suggestions, approved-child backup/restore acceptance, emulator publication, independent replica import, larger-batch resilience, broad final regression, or integration to main.
+
+Exact next action: extend the existing backup/restore and schema-2 emulator/replica harnesses with an approved Bulk child, proving restored SDS hash/size and independent replica activation without publishing import-review tables.
