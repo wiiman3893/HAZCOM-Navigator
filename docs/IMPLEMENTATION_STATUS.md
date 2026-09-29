@@ -32,9 +32,11 @@ Reports & Export has readiness, Publish/Retry, staged progress, current revision
 
 The canonical [commercial contract](COMMERCIAL_CONTRACT_V1.md) and [entitlement handoff](ENTITLEMENT_ENGINE_HANDOFF.md) describe a validated Demo/capability foundation. Account bootstrap, Demo limits/switching, trusted publication gates, local authoring limits, synthetic billing events, Pro-seat inheritance, takeover, backup-email verification with a mock outbox, emulator-only cleanup, and versioned local backup round-trip have automated coverage. A Windows service exports that backup during paid grace/export. Production email/cloud delivery, scheduled cleanup, native restore, and real billing integration remain future work. The development Firebase project was not deployed.
 
-## Bulk SDS Import milestone 1 — local review drafts
+## Bulk SDS Import Phase 2 — complete on task branch, pending final integration
 
-Windows Chemical Library now supports importing one multi-page PDF as an SDS batch. The original source is copied into managed local storage with SHA-256/size/page-count metadata. Page-level embedded text is analyzed deterministically where available; pages without useful text are marked OCR REQUIRED but remain manually splittable. Conservative boundary heuristics create persisted review drafts, and the user can Split Here, Merge With Previous, Merge With Next, and save the review state without creating Chemical Products. See [Bulk SDS Import handoff](BULK_SDS_IMPORT_HANDOFF.md).
+The Windows Chemical Library now implements the complete local Bulk workflow: managed source import, boundary review, embedded text, offline `Windows.Data.Pdf` + `Windows.Media.Ocr`, persisted retry/resume, sections and reviewed Product fields with evidence-page provenance, deterministic child PDFs, and explicit create-new or update-selected Product approval. Existing-Product updates preserve stable identity, relationships/events, and prior SDS history. Extraction never writes authoritative Product data without approval.
+
+Native generated image-only OCR passed with the installed `en-US` recognizer. Mixed-source provenance, missing-language/unusable-text fallback, a 50-page failure/retry batch, hash/write failure safety, UI OCR-to-update flow, approved-child backup/restore, schema-2 Firebase emulator publication, fresh independent replica import, corrupted-download rollback, and revision-2 activation all pass. Import-review tables remain local and are excluded from backup/publication; approved Product/SDS data uses the existing contracts. See [Bulk SDS Import handoff](BULK_SDS_IMPORT_HANDOFF.md) and [work resume](WORK_RESUME_BULK_SDS_PHASE2.md). No deployment or real Firebase mutation occurred.
 
 ## Current Windows authoring checkpoint
 
@@ -149,7 +151,7 @@ The repository also includes:
 2. **Coordinate schema 2 cloud deployment.** Deploy the new Functions, indexes, rules and compatible clients together; configure staged cleanup scheduling/quotas and perform a real-cloud scalable publication smoke test.
 3. **Exercise the mobile/published-member path on physical devices.** Validate the existing replica adapter and build authorized published-data screens.
 4. **Harden production Windows authentication/session behavior.** Replace the development-only auth boundary with the approved packaged OAuth/session strategy and define the offline entitlement policy.
-5. **Extend SDS ingestion with OCR/text normalization, field extraction, approved child-PDF generation, and Chemical Product creation/update.**
+5. **Add optional Bulk SDS assistance.** Consider conservative duplicate match reasons and an explicit mid-run OCR Cancel control; explicit update and safe resume already work without these additions.
 6. **Build reporting/export/handoff outputs.**
 7. **Integrate the eventual billing provider and webhook lifecycle.**
 

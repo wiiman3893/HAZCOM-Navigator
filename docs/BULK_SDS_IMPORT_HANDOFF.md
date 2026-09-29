@@ -1,146 +1,79 @@
-# Bulk SDS Import handoff
+# Bulk SDS Import Phase 2 handoff
 
-## Milestone
+## Implemented workflow
 
-Windows Bulk SDS Import milestone 1 adds a local review-draft workflow for one multi-page PDF containing one or many SDS documents.
+The Windows Chemical Library can import one multi-page PDF, preserve the original in Company-scoped managed storage, detect and manually edit candidate boundaries, extract SDS fields, run offline Windows OCR only on pages that need it, require human review, and materialize an approved page range as a deterministic child PDF.
 
-User flow:
+Approval always requires an explicit choice to create a new Chemical Product or update a specifically selected existing Chemical Product. Extraction alone never creates or changes authoritative Product data.
 
-Chemical Library -> Import SDS Batch -> choose one PDF -> analyze pages -> review proposed candidates -> Split Here / Merge With Previous / Merge With Next -> Save review drafts.
+## Local data and file contracts
 
-No Chemical Products are created by this milestone.
+Migrations 4–6 add local-only import sessions, pages, drafts, raw/normalized page text, OCR state, parsed sections, reviewed fields, candidate approval state, and immutable materialization provenance. Provenance links the source session/SHA/page range to the child Product, attachment, path, SHA-256, size, page count, materialization version, and timestamp.
 
-## Local data model
+The source PDF is capped at 250 MiB and is never changed in place. An approved child uses the existing Product SDS contract and 5 MiB limit. Import-review tables are excluded from publication and backup. Once approved, Product, attachment, integrity metadata, and SDS bytes are ordinary authoritative Company data and use those existing systems.
 
-Migration `004_bulk_sds_import.sql` adds three local-only tables:
+## Embedded text and boundaries
 
-- `sds_import_session`: Company-scoped source batch metadata, managed source path, SHA-256, byte size, page count, imported timestamp, and review status.
-- `sds_import_page`: one row per source page with bounded extracted-text snippet, OCR-required marker, and deterministic detection signals.
-- `sds_import_draft`: persisted candidate SDS page ranges with confidence, reason, optional detected title, and review state.
+The deterministic first-pass parser handles common page trees, uncompressed and Flate streams, and literal/TJ/hex text operators. It is intentionally conservative. Unsupported object streams, font encodings/CMaps, or unusual content may cause a page to require OCR.
 
-These records are not part of the authoritative Chemical Product model and are not included in publication.
+Boundary proposals use Safety Data Sheet/SECTION 1 signals, page-number resets, and SECTION 16 followed by a new SECTION 1. Every source page remains in exactly one contiguous candidate. Split and merge controls remain available even when all pages need OCR.
 
-## Managed-file behavior
+## Native Windows OCR
 
-The user's selected source file is never modified in place.
+`apps/windows/src-tauri/src/sds_ocr.rs` uses narrow Windows Rust bindings for `Windows.Data.Pdf`, `Windows.Media.Ocr`, and the required bitmap/storage/stream APIs. Processing is local and offline.
 
-Windows copies the source PDF into application-managed local storage through the Tauri file boundary. Existing individual product SDS attachments retain their 5 MiB limit. Bulk source PDFs have a separate 250 MiB limit.
+The renderer caps the longest image dimension at the smaller of the Windows OCR maximum and 2400 pixels. OCR text is capped at 256 KiB per page. The selected workspace token, Company-owned session, canonical managed root, relative path, and page range are checked before rendering. Blocking WinRT calls run on Tauri's blocking worker pool.
 
-The session records:
+Availability distinguishes `available`, `language_support_missing`, `platform_unavailable`, and `engine_creation_failed`. The recognizer comes from installed Windows OCR languages; HazCom Navigator never installs or changes language packs. Persisted safe failures distinguish source/PDF render/bitmap/page/task/range/text-size and unusable-text failures.
 
-- source filename
-- managed relative source path
-- SHA-256
-- source byte size
-- page count
-- imported timestamp
-- status
+Completed version-1 pages are not processed again. Failed pages remain retryable. Missing platform/language support and unusable results become `manual_required`; the batch, boundaries, reviewed fields, and manual-entry path remain usable. Mixed pages retain sparse embedded text plus OCR text and are labeled `mixed`.
 
-The source hash and byte size are computed before persistence.
+The UI shows required, completed, failed, and manual-action counts. Processing is sequential and commits after each page, so close/retry safely resumes. There is no explicit mid-run Cancel button yet.
 
-## Page-level text extraction
+## Extraction and provenance
 
-`packages/authoring/src/pdf-import.js` contains a deterministic, dependency-free first-pass PDF analyzer.
+Normalized text uses Unicode NFKC, line-ending/whitespace normalization, and conservative SECTION-heading repair. Sections 1–16 retain bounded evidence and source pages. Proposed fields cover Product name, manufacturer, SDS/revision date, and checksum-valid CAS numbers.
 
-It walks the PDF page tree where available, resolves page content streams, handles uncompressed and Flate-compressed streams, and extracts literal/TJ/hex text operators inside text objects.
+Each field records its actual evidence section, page, bounded evidence, confidence, and source method. Product name from an embedded page remains `embedded` even if another page used OCR. Manufacturer from an OCR page is `ocr`. CAS is `mixed` only when accepted CAS evidence spans multiple source methods.
 
-A page with insufficient useful alphanumeric text is marked `OCR REQUIRED`.
+Users can confirm, correct, or clear proposed values. Required Product fields must be reviewed before approval.
 
-Image-only/scanned PDFs remain valid imports. OCR is not required for manual segmentation.
+## Approval and SDS history
 
-Known parser limitation: this milestone intentionally does not implement the full PDF specification. PDFs that rely on object streams, complex font encodings/CMaps, or unusual content structures may be classified as having no useful embedded text. Those pages fall back to OCR-required/manual review rather than being treated as confidently parsed.
+Native `lopdf` materialization copies only the approved original pages in order, validates output/page count/size, reloads it, and computes SHA-256. Repeated materialization of the same source/range is deterministic.
 
-## Boundary heuristics
+Create approval verifies and stages the child before one authoring transaction creates Product, ownership, current SDS, integrity, provenance, history, and approval state.
 
-Candidate starts are conservative and use combinations of:
+Update approval requires a selected active Product owned by the current Company. It preserves stable Product ID, unextracted chemical names, Work Area relationships, Training history, and SDS Verification Events. The former current SDS becomes `sds_history`; reviewed fields and the new current SDS are written with provenance and approval in one authoring transaction. It does not create an SDS Verification Event automatically.
 
-- source page 1
-- Safety Data Sheet heading
-- SECTION 1
-- Page 1 of X / page-number reset
-- SECTION 16 shortly before a subsequent SECTION 1
+Child verification or managed-file staging failure leaves the prior Product/current SDS/integrity state intact and the candidate unapproved. Cross-Company and deleted Product targets are rejected by existing scope checks.
 
-Strong combinations are labeled `likely`. Weaker SECTION 1-only transitions are labeled `uncertain`.
+## Backup, publication, and independent replica proof
 
-Each candidate preserves:
+Native acceptance creates an approved Bulk Product/SDS, backs up the Company, restores it into an isolated workspace, and verifies Product values, SDS bytes, size, and SHA-256. Unfinished Bulk sessions are deliberately excluded; approved authoritative data survives normally.
 
-- start page
-- end page
-- confidence
-- human-readable reason
-- lightweight detected title when available
-- source session relationship
+The restored workspace publishes through the existing schema-2 emulator path: begin, chunk stage, SDS upload, seal, paged validation, and atomic finalize. The published revision contains the Product and child SDS using the ordinary schema and no import-review tables.
 
-The detector always emits contiguous ranges covering every source page exactly once.
+A separate empty SQLite replica downloads the revision/SDS, verifies integrity, and atomically activates it. A corrupted SDS download is rejected while revision 1 remains active. A subsequent valid revision-2 sync succeeds and activates atomically.
 
-## Review workflow
+No deployment or real Firebase mutation was performed. Emulator guards require project `demo-hazcom-navigator`.
 
-The Windows review screen lists the source batch and candidate ranges. Each candidate shows the page range, detected title or Unknown product, confidence/reason, OCR-required count, and a starting-page snippet when available.
+## Diagnostics and validation
 
-Edits are persisted immediately:
+Diagnostics allowlist metadata-only OCR page/batch and Product creation/update operations. Raw OCR/SDS text, Product/manufacturer/CAS values, and customer paths are never included.
 
-- Split Here: split before a selected page inside the candidate
-- Merge With Previous
-- Merge With Next
+Focused evidence on September 28, 2026:
 
-Manual edits are marked as manual adjustments.
+- native OCR: Windows `en-US` available; a generated raster-only PDF recognized expected Product/CAS text;
+- authoring: 24 tests for image-only/mixed provenance, persistence, unavailable/unusable fallback, explicit update, hash/write failure safety, and a 50-page retry/resume batch;
+- Windows UI: full OCR-to-existing-Product approval scenario passed;
+- native backup/restore: approved child round trip passed;
+- schema-2 emulator: approved child publication, interrupted retries, independent replica, corruption rollback, and revision-2 activation passed.
 
-Save review drafts marks the session as `review_drafts_saved`. It still does not create Chemical Products.
+## Remaining limitations
 
-## Manual fallback
-
-Manual segmentation is always available, including when every page is OCR-required or automatic detection produces only one full-document candidate.
-
-Range rewrite validation requires exact source-page coverage with no gaps, overlaps, or dropped pages.
-
-## Tests
-
-Focused authoring tests cover:
-
-- one SDS
-- several text SDSs
-- repeated SECTION 1
-- page-number reset signal
-- uncertain boundary
-- image-only/no-text PDF
-- Split Here
-- Merge With Previous
-- Merge With Next
-- restart persistence
-- source SHA-256 and size integrity
-- no disappearing pages
-- Company scope isolation
-
-The Windows Playwright harness covers importing an image-only three-page batch, splitting it, merging it, and saving review drafts.
-
-## Schema-4 Windows acceptance (September 26, 2026)
-
-The Tauri startup registers migrations 1–4 with `tauri-plugin-sql` 2.4.1. Its load command builds a SQLx `Migrator` from those specs and calls the SQLite pool's migration runner. SQLx runs each migration and its migration-ledger insert in one transaction (`no_tx=false`). `apps/windows/src-tauri/src/lib.rs` now shares its production migration list with an acceptance test that runs the same SQLx migration engine.
-
-The native acceptance test passed against both a synthetic schema-3 fixture and a temporary copy of the current Windows workspace. Read-only diagnostics first established that the original workspace was schema 3, `integrity_check=ok`, with 2 Work Areas, 3 Chemical Products, 1 Worker, 2 Work Area Products, 2 Assignments, 3 SDS Verifications, 2 HAZCOM Reviews, 2 Training Events, and 3 verified SDS attachments. Only the copy received migration 4. Its Tauri/SQLx ledger advanced from 3 to 4. The test compared every column of every pre-existing SQLite table row before and after migration, excluding only SQLx's migration ledger and the three new import tables; it also explicitly compared SDS attachment identity/path/size/hash tuples. New-table indexes and foreign keys were present, `foreign_key_check` remained empty, `integrity_check` returned `ok`, and reopening with the same migrator was a no-op. A separate forced SQL error confirmed transactional rollback leaves no new tables and keeps the ledger at 3. The original app database remains unchanged at schema 3 pending its next normal native app open.
-
-The `scripts/validate-schema4-copy.mjs` harness then ran the existing authoring service against that migrated copy with a synthetic three-page PDF. It verified Company ownership, source size and SHA-256, three persisted page rows, manual Split Here and Merge With Previous, saved draft state after closing/reopening SQLite, contiguous page coverage `[1,2,3]`, unchanged Chemical Product count, and clean SQLite integrity/foreign keys. The source PDF and all writes were confined to the temporary copy and its temporary attachment directory. The six-test Windows Playwright suite also passed, including the Bulk SDS UI split/merge/save flow. These UI tests use the existing browser harness; no separate visual check of a packaged native app was performed.
-
-Diagnostics read the migrated copy without writing to it and reported source schema 4, applied ledger schema 4, `migrationPending=false`, authoring/publication projection PASS, one imported session in `review_drafts_saved`, and verified original SDS files. In quick mode, the overall result remained WARN because quick mode skips live cloud checks and the task branch had local changes; there was no schema-4 warning.
-
-Reproduce the migrated-copy import check by first making a disposable copy of a schema-3 database and running the native SQLx migration acceptance test against the copy with `HAZCOM_SCHEMA3_FIXTURE_DB=<copy path>`. Then set `HAZCOM_SCHEMA4_COPY_DB=<migrated copy path>` and `HAZCOM_SCHEMA4_COMPANY_ID=<Company ID>` and run `node scripts/validate-schema4-copy.mjs`. That script refuses to write outside the operating-system temporary directory. Never point it at the installed database.
-
-The Windows frontend and optimized native Tauri executable build successfully with `npm run tauri -w @hazcom/windows -- build --no-bundle`. Vite emits its existing advisory that the minified main JavaScript chunk exceeds 500 kB; this does not fail the build. A Windows installer was not produced because neither WiX nor NSIS is installed in the environment. The documented native launch command remains `npm run tauri -w @hazcom/windows -- dev` from the repository root.
-
-## Known limitations
-
-- No OCR engine yet.
-- No AI/LLM extraction.
-- No authoritative manufacturer/date/CAS/hazard extraction.
-- No PDF thumbnail rendering.
-- No child SDS PDF materialization yet; candidates currently retain auditable source page ranges.
-- Embedded-text extraction is intentionally conservative and not a full PDF implementation.
-- No Chemical Product creation/update from drafts yet.
-
-## Exact next milestone
-
-Add the review-to-extraction pipeline:
-
-OCR/text normalization -> SDS section parsing -> product/manufacturer/revision-date/CAS extraction -> field-level confidence -> human review -> deterministic child-PDF generation from approved ranges -> create/update Chemical Products and attach the resulting managed SDS PDF.
-
-Approved child PDFs must retain source import session ID, source page range, source SHA-256, child SHA-256, and byte size for traceability.
+- No explicit mid-run OCR cancellation control; completed-page persistence provides close/reopen resume.
+- No fuzzy duplicate/revision suggestions. Users explicitly select update targets; the app never auto-merges or auto-replaces.
+- No AI/LLM or remote OCR service.
+- Embedded parsing is conservative, and Windows OCR quality depends on installed language support and scan quality.
+- No PDF thumbnail UI.
