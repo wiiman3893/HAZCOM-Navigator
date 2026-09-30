@@ -1,4 +1,4 @@
-use crate::workspace::{checked, valid_id, WorkspaceState};
+use crate::workspace::{checked_writable, valid_id, WorkspaceState};
 use serde::Serialize;
 use std::path::{Path,PathBuf};
 use windows::{core::HSTRING,Data::Pdf::{PdfDocument,PdfPageRenderOptions},Graphics::Imaging::BitmapDecoder,Media::Ocr::OcrEngine,Storage::{StorageFile,Streams::InMemoryRandomAccessStream}};
@@ -23,8 +23,7 @@ fn availability()->OcrAvailability{
 }
 
 async fn source_path(state:&WorkspaceState,token:&str,session_id:&str)->Result<PathBuf,String>{
- let guard=state.0.lock().await;let session=checked(&guard,token)?;
- if session.lease.read_only{return Err("WORKSPACE_EXPORT_ONLY".into());}
+ let mut guard=state.0.lock().await;let session=checked_writable(&mut guard,token)?;
  if !valid_id(session_id){return Err("SDS_IMPORT_SESSION_INVALID".into());}
  let relative:String=sqlx::query_scalar("SELECT managed_source_path FROM sds_import_session WHERE id=? AND company_id=?")
   .bind(session_id).bind(&session.lease.company_id).fetch_optional(&session.pool).await.map_err(|_|"OCR_SOURCE_LOOKUP_FAILED".to_string())?.ok_or("SDS_IMPORT_SESSION_NOT_FOUND")?;

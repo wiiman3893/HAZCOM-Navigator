@@ -1,5 +1,9 @@
 # HazCom Navigator Firebase development foundation
 
+## Windows offline authorization source milestone — 2026-09-29
+
+The source exports `issueWindowsOfflineAuthorizationLease`, a trusted callable that issues a fixed, server-timed ES256 JWS/JWT only after current enabled/revocation-aware Google identity, active Company/Membership, Manager/Administrator role, active coverage, and `canAuthor` checks. Expiry is capped at seven days and clipped to `paidThrough`. The production private key is the Functions secret `WINDOWS_OFFLINE_LEASE_PRIVATE_KEY`; it has not been created or deployed. The synthetic private key is available only for the exact `demo-hazcom-navigator` emulator environment. Windows native trust is compile-time public-key configuration and fails closed when absent. See [the offline authorization handoff](../docs/WINDOWS_OFFLINE_AUTHORIZATION_HANDOFF.md).
+
 ## Commercial entitlement V1 source checkpoint
 
 The local source contains the versioned Company/Pro Demo capability resolver, trusted publication limits, Pro-team coverage, and synthetic lifecycle proof described in [Commercial Contract V1](../docs/COMMERCIAL_CONTRACT_V1.md) and [the entitlement handoff](../docs/ENTITLEMENT_ENGINE_HANDOFF.md). These changes were tested only in emulators. **Do not deploy this source as a live commercial release to hazcom-navigator-dev.** The existing cloud deployment still has the earlier subscription model. Existing `customer` and `professional` records map to Company and Pro without rewriting coverage or Company roles.
@@ -82,9 +86,9 @@ Copy the public repository `.env.example` to ignored `.env` if needed. Run `npm 
 
 The relay binds only to 127.0.0.1 on an ephemeral port, uses a 256-bit one-use state value in a fragment removed from browser history, checks exact Host/Origin, accepts bounded JSON only, and expires after three minutes. Google credentials are POSTed locally and passed to Firebase; no token is put in a URL, log, localStorage or SQLite. Browser and Windows Firebase sessions use memory persistence. The relay is disabled in release builds and restricted to the existing dev project. Its official Firebase browser modules are version-pinned to 12.19.0. This is a development bridge, not the finalized production OAuth architecture.
 
-SQLite preload was removed. The local draft workspace opens only after a live Google Account and canonical Manager/Administrator membership check. Company IDs/names come from Firebase, not an unauthenticated local selector. Members see a verified access screen without reading local Worker/draft records. Account/Company switching, sign-out, offline events, membership listeners, focus and periodic refresh clear or revalidate the shell. This session adds no domain CRUD or publication UI. Existing membership retains entry when the user's personal subscription expires; server mutations still check Company coverage. No signed offline lease is implemented.
+SQLite preload was removed. The local draft workspace opens only after a live Google Account and canonical Manager/Administrator membership check, or during an outage after native verification of the later server-signed offline authorization. Company IDs/names normally come from Firebase; offline recovery exposes only Company IDs in matching native lease metadata. Members do not receive offline authoring. Account/Company switching, sign-out, connectivity events, membership listeners, focus and periodic refresh close or revalidate the shell. Existing membership retains entry when the user's personal subscription expires; server mutations still check Company coverage.
 
-Before production: choose/register the production desktop OAuth/PKCE or approved HTTPS return architecture, verify production origins/CSP/App Check, add OS-protected session persistence if desired, and implement the reviewed offline lease. Do not enable the development relay in release builds as a shortcut.
+Before production: choose/register the production desktop OAuth/PKCE or approved HTTPS return architecture, verify production origins/CSP/App Check, provision the offline signing secret and matching native public trust root, deploy the callable, and perform packaged outage/reconnect acceptance. Do not enable the development relay in release builds as a shortcut.
 
 ## Authority and data layout
 

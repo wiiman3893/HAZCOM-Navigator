@@ -5,6 +5,7 @@ mod workspace;
 mod diagnostics;
 mod sds_pdf;
 mod sds_ocr;
+mod offline_lease;
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -39,6 +40,7 @@ pub fn run() {
             diagnostics::diagnostic_status,diagnostics::diagnostic_start,diagnostics::diagnostic_events,
             diagnostics::diagnostic_mark,diagnostics::diagnostic_stop,diagnostics::diagnostic_export,diagnostics::diagnostic_open_exports,
             browser_auth::google_browser_sign_in,
+            offline_lease::store_offline_authorization,offline_lease::list_offline_authorizations,offline_lease::clear_offline_authorizations,
             backup_restore::restore_company_backup,
             backup_restore::inspect_restored_company_backup
             ,workspace::activate_workspace,workspace::remembered_workspace,workspace::list_workspaces,

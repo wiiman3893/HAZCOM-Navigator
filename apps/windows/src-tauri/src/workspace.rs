@@ -10,7 +10,8 @@ use tokio::sync::Mutex;
 
 #[derive(Default)]
 pub struct WorkspaceState(pub Mutex<Option<Session>>);
-pub struct Session { pub lease: Lease, pub pool: SqlitePool, pub files: PathBuf, journal:PathBuf }
+pub enum Authority { Online, Offline{expires_at:i64,last_observed:i64,cache_root:PathBuf} }
+pub struct Session { pub lease: Lease, pub pool: SqlitePool, pub files: PathBuf, journal:PathBuf, authority:Authority }
 #[derive(Clone, Serialize)]
 #[serde(rename_all="camelCase")]
 pub struct Lease { pub workspace_id:String, pub company_id:String, pub token:String, pub read_only:bool, pub selection_warning:Option<String> }
@@ -29,6 +30,17 @@ fn inside(root:&Path,path:&Path)->Result<PathBuf,String>{
 pub fn checked<'a>(session:&'a Option<Session>,token:&str)->Result<&'a Session,String>{
  session.as_ref().filter(|s|s.lease.token==token).ok_or_else(||"WORKSPACE_SESSION_STALE".into())
 }
+fn authority_writable(value:&mut Session)->Result<(),String>{
+ if value.lease.read_only{return Err("WORKSPACE_EXPORT_ONLY".into());}
+ if let Authority::Offline{expires_at,last_observed,cache_root}=&mut value.authority{let at=crate::offline_lease::now();let observed=crate::offline_lease::record_observed(cache_root,at)?;if at+300<observed||at>=*expires_at{value.lease.read_only=true;return Err("WORKSPACE_OFFLINE_AUTHORIZATION_EXPIRED".into());}*last_observed=observed;}
+ Ok(())
+}
+pub fn checked_writable<'a>(session:&'a mut Option<Session>,token:&str)->Result<&'a mut Session,String>{
+ let value=session.as_mut().filter(|s|s.lease.token==token).ok_or_else(||"WORKSPACE_SESSION_STALE".to_string())?;
+ authority_writable(value)?;
+ Ok(value)
+}
+pub fn checked_online_writable<'a>(session:&'a mut Option<Session>,token:&str)->Result<&'a mut Session,String>{let value=checked_writable(session,token)?;if !matches!(value.authority,Authority::Online){return Err("WORKSPACE_ONLINE_AUTHORIZATION_REQUIRED".into());}Ok(value)}
 fn bind<'q>(sql:&'q str,values:Vec<Value>)->Result<sqlx::query::Query<'q,sqlx::Sqlite,sqlx::sqlite::SqliteArguments<'q>>,String>{
  let mut query=sqlx::query(sql);
  for value in values {query=match value {
@@ -45,7 +57,7 @@ async fn registry(root:&Path)->Result<SqlitePool,String>{
  if let Err(e)=sqlx::query("CREATE TABLE IF NOT EXISTS selections(account_id TEXT NOT NULL,company_id TEXT NOT NULL,workspace_id TEXT NOT NULL,PRIMARY KEY(account_id,company_id))").execute(&pool).await {pool.close().await;return Err(e.to_string());}
  Ok(pool)
 }
-async fn prepare(config:&Path,data:&Path,id:&str,company:&str,read_only:bool)->Result<Session,String>{
+async fn prepare(config:&Path,data:&Path,id:&str,company:&str,read_only:bool,authority:Authority)->Result<Session,String>{
  if !valid_id(company){return Err("WORKSPACE_COMPANY_INVALID".into());}
  let (path,files)=if id=="primary" {
   fs::create_dir_all(config).map_err(|e|e.to_string())?;
@@ -69,16 +81,16 @@ async fn prepare(config:&Path,data:&Path,id:&str,company:&str,read_only:bool)->R
   if integrity!="ok"||broken!=0{return Err("WORKSPACE_SQLITE_INVALID".to_string());} Ok(())
  }.await;
  if let Err(e)=result {pool.close().await;return Err(e);}
- Ok(Session{lease:Lease{workspace_id:id.into(),company_id:company.into(),token:format!("{:032x}",rand::random::<u128>()),read_only,selection_warning:None},pool,files,journal})
+ Ok(Session{lease:Lease{workspace_id:id.into(),company_id:company.into(),token:format!("{:032x}",rand::random::<u128>()),read_only,selection_warning:None},pool,files,journal,authority})
 }
 #[cfg(test)]
 async fn activate(state:&WorkspaceState,config:&Path,data:&Path,account:&str,company:&str,id:&str)->Result<Lease,String>{
- activate_mode(state,config,data,account,company,id,false).await
+ activate_mode(state,config,data,account,company,id,false,Authority::Online).await
 }
-async fn activate_mode(state:&WorkspaceState,config:&Path,data:&Path,account:&str,company:&str,id:&str,read_only:bool)->Result<Lease,String>{
+async fn activate_mode(state:&WorkspaceState,config:&Path,data:&Path,account:&str,company:&str,id:&str,read_only:bool,authority:Authority)->Result<Lease,String>{
  if !valid_id(account){return Err("WORKSPACE_ACCOUNT_INVALID".into());}
  let mut guard=state.0.lock().await;
- let mut next=prepare(config,data,id,company,read_only).await?;
+ let mut next=prepare(config,data,id,company,read_only,authority).await?;
  let saved=async {
   let registry=registry(data).await?;
   let result=sqlx::query("INSERT INTO selections VALUES(?,?,?) ON CONFLICT(account_id,company_id) DO UPDATE SET workspace_id=excluded.workspace_id").bind(account).bind(company).bind(id).execute(&registry).await.map_err(|e|e.to_string());
@@ -95,8 +107,10 @@ async fn activate_mode(state:&WorkspaceState,config:&Path,data:&Path,account:&st
  Ok(lease)
 }
 #[tauri::command]
-pub async fn activate_workspace(app:tauri::AppHandle,state:tauri::State<'_,WorkspaceState>,account_id:String,company_id:String,workspace_id:String,read_only:bool)->Result<Lease,String>{
- activate_mode(&state,&app.path().app_config_dir().map_err(|e|e.to_string())?,&app.path().app_data_dir().map_err(|e|e.to_string())?,&account_id,&company_id,&workspace_id,read_only).await
+pub async fn activate_workspace(app:tauri::AppHandle,state:tauri::State<'_,WorkspaceState>,account_id:String,company_id:String,workspace_id:String,read_only:bool,offline:Option<bool>,environment:Option<String>)->Result<Lease,String>{
+ let data=app.path().app_data_dir().map_err(|e|e.to_string())?;
+ let (read_only,authority)=if offline.unwrap_or(false){let grant=crate::offline_lease::grant(&data,&account_id,&company_id,environment.as_deref().ok_or("OFFLINE_AUTHORIZATION_ENVIRONMENT_REQUIRED")?)?;(grant.read_only,Authority::Offline{expires_at:grant.expires_at,last_observed:grant.last_observed,cache_root:data.clone()})}else{(read_only,Authority::Online)};
+ activate_mode(&state,&app.path().app_config_dir().map_err(|e|e.to_string())?,&data,&account_id,&company_id,&workspace_id,read_only,authority).await
 }
 #[tauri::command]
 pub async fn remembered_workspace(app:tauri::AppHandle,account_id:String,company_id:String)->Result<Option<String>,String>{
@@ -153,8 +167,7 @@ pub async fn workspace_batch(state:tauri::State<'_,WorkspaceState>,token:String,
  batch(&state,token,statements).await
 }
 async fn batch(state:&WorkspaceState,token:String,statements:Vec<Statement>)->Result<(),String>{
- let guard=state.0.lock().await;let session=checked(&guard,&token)?;
- if session.lease.read_only{return Err("WORKSPACE_EXPORT_ONLY".into());}
+ let mut guard=state.0.lock().await;let session=checked_writable(&mut guard,&token)?;
  if statements.len()>10000{return Err("Workspace batch too large".into());}
  let mut tx=session.pool.begin().await.map_err(|e|e.to_string())?;
  for item in statements{
@@ -162,6 +175,7 @@ async fn batch(state:&WorkspaceState,token:String,statements:Vec<Statement>)->Re
   if item.statement.contains(';')||!["INSERT ","UPDATE ","DELETE "].iter().any(|p|prefix.starts_with(p)){return Err("WORKSPACE_MUTATION_SQL_INVALID".into());}
   bind(&item.statement,item.values)?.execute(&mut *tx).await.map_err(|e|e.to_string())?;
  }
+ authority_writable(session)?;
  tx.commit().await.map_err(|e|e.to_string())
 }
 
@@ -170,8 +184,7 @@ pub async fn workspace_journal(state:tauri::State<'_,WorkspaceState>,token:Strin
  journal(&state,token,key,value).await
 }
 async fn journal(state:&WorkspaceState,token:String,key:String,value:Option<String>)->Result<Option<String>,String>{
- let guard=state.0.lock().await;let session=checked(&guard,&token)?;
- if session.lease.read_only{return Err("WORKSPACE_EXPORT_ONLY".into());}
+ let mut guard=state.0.lock().await;if value.is_some(){checked_writable(&mut guard,&token)?;}else{checked(&guard,&token)?;}let session=checked(&guard,&token)?;
  if key.len()>1024||value.as_ref().is_some_and(|v|v.len()>8*1024*1024){return Err("WORKSPACE_JOURNAL_TOO_LARGE".into());}
  if session.journal.exists(){inside(session.journal.parent().unwrap(),&session.journal)?;}
  let pool=SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(&session.journal).create_if_missing(true)).await.map_err(|e|e.to_string())?;
@@ -187,8 +200,7 @@ pub async fn workspace_store_pdf(state:tauri::State<'_,WorkspaceState>,token:Str
  store_pdf(&state,token,company_id,id,bytes,import_source).await
 }
 async fn store_pdf(state:&WorkspaceState,token:String,company_id:String,id:String,bytes:Vec<u8>,import_source:bool)->Result<String,String>{
- let guard=state.0.lock().await;let session=checked(&guard,&token)?;
- if session.lease.read_only{return Err("WORKSPACE_EXPORT_ONLY".into());}
+ let mut guard=state.0.lock().await;let session=checked_writable(&mut guard,&token)?;
  if company_id!=session.lease.company_id{return Err("WORKSPACE_COMPANY_MISMATCH".into());}
  super::publication_files::store_pdf_with_limit(&session.files,&company_id,&id,&bytes,if import_source{250*1024*1024}else{5*1024*1024})
 }
@@ -378,7 +390,7 @@ mod tests {
   if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
   let db_path=data.join("restored-workspaces").join(&company).join("active/workspace.db");
   let before=fs::read(&db_path).unwrap();
-  let readonly=activate_mode(&state,&config,&data,"account",&company,&a.workspace_id,true).await.unwrap();
+  let readonly=activate_mode(&state,&config,&data,"account",&company,&a.workspace_id,true,Authority::Online).await.unwrap();
   assert!(readonly.read_only);
   assert_eq!(batch(&state,reopened.token,vec![]).await.unwrap_err(),"WORKSPACE_SESSION_STALE");
   assert!(!select(&state,readonly.token.clone(),"SELECT id FROM work_area".into(),vec![]).await.unwrap().is_empty());
@@ -387,10 +399,22 @@ mod tests {
   assert_eq!(journal(&state,readonly.token.clone(),"account/attempt".into(),Some("forbidden".into())).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
   if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
   assert_eq!(fs::read(&db_path).unwrap(),before);
-  let recovered=activate_mode(&state,&config,&data,"account",&company,&a.workspace_id,false).await.unwrap();
+  let recovered=activate_mode(&state,&config,&data,"account",&company,&a.workspace_id,false,Authority::Online).await.unwrap();
   assert_eq!(recovered.workspace_id,a.workspace_id);assert!(!recovered.read_only);
   assert_eq!(select(&state,readonly.token,"SELECT 1".into(),vec![]).await.unwrap_err(),"WORKSPACE_SESSION_STALE");
   batch(&state,recovered.token,vec![Statement{statement:"UPDATE work_area SET name='Recovered authoring'".into(),values:vec![]}]).await.unwrap();
+  let valid_root=root.join("valid-lease-cache");let valid_at=crate::offline_lease::now();crate::offline_lease::record_observed(&valid_root,valid_at).unwrap();
+  let valid_offline=activate_mode(&state,&config,&data,"account",&company,&a.workspace_id,false,Authority::Offline{expires_at:valid_at+600,last_observed:valid_at,cache_root:valid_root}).await.unwrap();
+  batch(&state,valid_offline.token.clone(),vec![Statement{statement:"UPDATE work_area SET name='Authorized offline'".into(),values:vec![]}]).await.unwrap();
+  {let mut guard=state.0.lock().await;assert_eq!(checked_online_writable(&mut guard,&valid_offline.token).err().unwrap(),"WORKSPACE_ONLINE_AUTHORIZATION_REQUIRED");}
+  assert!(!select(&state,valid_offline.token,"SELECT id FROM work_area".into(),vec![]).await.unwrap().is_empty());
+  let lease_root=root.join("lease-cache");let at=crate::offline_lease::now();crate::offline_lease::record_observed(&lease_root,at-2).unwrap();
+  let expired=activate_mode(&state,&config,&data,"account",&company,&a.workspace_id,false,Authority::Offline{expires_at:at-1,last_observed:at-2,cache_root:lease_root}).await.unwrap();
+  assert_eq!(batch(&state,expired.token.clone(),vec![Statement{statement:"UPDATE work_area SET name='Forbidden offline'".into(),values:vec![]}]).await.unwrap_err(),"WORKSPACE_OFFLINE_AUTHORIZATION_EXPIRED");
+  assert_eq!(store_pdf(&state,expired.token.clone(),company.clone(),"expired-sds".into(),b"%PDF-expired".to_vec(),false).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
+  assert_eq!(journal(&state,expired.token.clone(),"attempt".into(),Some("forbidden".into())).await.unwrap_err(),"WORKSPACE_EXPORT_ONLY");
+  assert!(!select(&state,expired.token.clone(),"SELECT id FROM work_area".into(),vec![]).await.unwrap().is_empty());
+  assert_eq!(journal(&state,expired.token,"attempt".into(),None).await.unwrap(),None);
   if let Some(old)=state.0.lock().await.take(){old.pool.close().await;}
   let resolved=root.canonicalize().unwrap();assert!(resolved.starts_with(std::env::temp_dir().canonicalize().unwrap()));fs::remove_dir_all(resolved).unwrap();
  }

@@ -1,10 +1,16 @@
 # Implementation status
 
+## Fixed seven-day Windows offline authorization — implemented locally
+
+The Windows application now has a server-authorized, ES256-signed offline authoring lease for previously online-authorized Managers and Administrators. Its fixed expiry is the earlier of seven days and the known commercial `paidThrough` boundary. Native Windows verifies the artifact against a build-time public trust root, stores it outside Company SQLite with user-scoped Windows Data Protection, detects significant clock rollback, and enforces expiry on every mutation path. Valid leases permit local authoring during an outage; expired valid leases preserve record/SDS/report/backup viewing and export in native read-only mode. Cloud publication, Company creation/administration, Membership changes, and backup restore remain unavailable offline. Reconnect closes offline authority before current server checks, and sign-out removes that UID's protected credentials without deleting customer data.
+
+Source and emulator validation are complete; deployment, production signing secret/trust configuration, packaged real-outage acceptance, and production OAuth acceptance remain separate. See [Windows offline authorization handoff](WINDOWS_OFFLINE_AUTHORIZATION_HANDOFF.md).
+
 ## Persistent Windows Firebase session — implemented locally
 
-Windows uses the supported Firebase 12.19.0 Auth persistence hierarchy (`indexedDBLocalPersistence`, then `browserLocalPersistence`) in the Tauri WebView2 profile. Firebase owns durable session data and token refresh; HazCom does not serialize tokens or private SDK state. Startup has explicit restoring, signed-out, authorizing, authorized, and failed states. Restored identity cannot expose a Company or open SQLite until online Account bootstrap, canonical Membership/Company checks, trusted identity/revocation checks, and commercial coverage authorization succeed.
+Windows uses the supported Firebase 12.19.0 Auth persistence hierarchy (`indexedDBLocalPersistence`, then `browserLocalPersistence`) in the Tauri WebView2 profile. Firebase owns durable session data and token refresh; HazCom does not serialize tokens or private SDK state. Startup now distinguishes online and native-verified offline authorization. A restored identity opens SQLite only after current online authorization or verification of a matching server-signed offline artifact.
 
-Sign-out clears the Firebase session and active workspace without deleting local SQLite, SDS, restored workspaces, journals, or backups. Account switching closes the prior lease before the new identity is authorized. Offline startup retains identity/local data but blocks authoring. The seven-day offline lease remains unimplemented. Emulator/Edge persistent-profile restart and focused session UI acceptance pass; packaged real-production WebView2 restart remains manual acceptance. See [Windows persistent session handoff](WINDOWS_PERSISTENT_SESSION_HANDOFF.md).
+Sign-out clears Firebase state, the active workspace, and that UID's protected offline credentials without deleting local SQLite, SDS, restored workspaces, journals, or backups. Account switching closes the prior native session before the new identity is authorized. Emulator/Edge persistent-profile restart and focused session UI acceptance pass; packaged real-production WebView2 restart remains manual acceptance. See [Windows persistent session handoff](WINDOWS_PERSISTENT_SESSION_HANDOFF.md).
 
 ## In-application Diagnostics Mode — integrated metadata-only reproduction timeline
 
@@ -127,7 +133,7 @@ Current limitations:
 
 - Firebase session persistence is intentionally in-memory; restarting the app requires login again
 - no production Firebase project/client was created and the configurable release path has not been exercised against legitimate production configuration
-- OS-protected session persistence and the fixed seven-day offline authorization lease remain future work
+- production signing-secret/native-trust rollout and packaged real-outage acceptance for the implemented fixed seven-day offline authorization remain future work
 - Member published-data screens are not yet implemented in the Windows authoring client
 
 SQLite opens only after live Firebase Company authorization. Member accounts do not open the Manager/Administrator authoring workspace.
@@ -159,7 +165,7 @@ Reports & Export Phase 1 adds a read-only, offline Chemical Inventory report, Co
 
 The remaining roadmap is now dominated by commercialization, member/mobile delivery, and release hardening rather than missing Windows authoring foundations.
 
-1. **Finish production Windows session and offline behavior.** The production-configurable loopback transport and fail-closed environment contract are implemented. Add OS-protected session persistence first, then the separately bounded seven-day offline authorization lease, restart/recovery behavior and real packaged production OAuth acceptance.
+1. **Deploy and accept the production Windows authorization path.** Provision the signing secret and matching native public trust root, deploy the implemented fixed seven-day lease callable, and complete packaged production OAuth, restart, outage, expiry, reconnect, and revocation acceptance.
 2. **Build and exercise the published-member/mobile experience.** Complete authorized Company/Work Area/Product/SDS browsing, assignment/training views, offline replica synchronization, and physical-device acceptance using the existing published-replica foundation.
 3. **Integrate real billing and commercial lifecycle plumbing.** Add the selected billing provider, checkout/subscription management, verified idempotent webhooks, reconciliation, production email, scheduled lifecycle/cleanup jobs where required, and the authorized rollout/backfill of current commercial fields.
 4. **Complete production rollout and security acceptance.** Prove the remaining live authenticated nonmember, Member, Demo, and privileged-write denials; perform fresh signed-in native acceptance; define deployment/rollback, monitoring, rate/size limits, retention/backup operations, and related production safeguards.

@@ -1,5 +1,9 @@
 # Codex handoff — Firebase checkpoint
 
+## Windows offline authorization lease — source only, 2026-09-29
+
+The task branch adds `issueWindowsOfflineAuthorizationLease`, standard ES256 JWS/JWT signing with key ID `offline-lease-es256-v1`, Secret Manager parameter `WINDOWS_OFFLINE_LEASE_PRIVATE_KEY`, strict server-derived Company/role/capability claims, and expiry capped by seven days plus `paidThrough`. The demo private key is guarded by the exact demo project and emulator signals. Emulator validation passes 25/25. Nothing was deployed and no real secret was created. A future authorized rollout must create an ES256 PKCS#8 private key secret, compile the corresponding SPKI public key into native trust configuration for the exact project, deploy the callable, then perform packaged outage/reconnect acceptance. See [the complete handoff](../docs/WINDOWS_OFFLINE_AUTHORIZATION_HANDOFF.md).
+
 ## Integrated source, undeployed commercial convergence — September 27, 2026
 
 The validated implementation was integrated into remote main at `3a0c1de617f200f3aa237573b4347d0ed0c735a3`; the closeout afterward changes documentation only. Final six-group regression passed at `diagnostics/output/20260927T223956`. No cloud deployment or data mutation occurred. See `docs/COMMERCIAL_WORKSPACE_CLOSURE.md`.
@@ -64,7 +68,7 @@ The security model is deliberate: Firebase owns identity, subscriptions/entitlem
 - Real Google Account bootstrap, 30-day Professional entitlement (existing IAM-only utility), Company/Manager membership and role enforcement passed. No client entitlement bypass.
 - Real SDS upload/publication/download/hash, nonmember/unauthenticated denial and overwrite/delete/list denial passed at 2026-09-21T02:48:26Z. Administrative metadata check confirmed no persistent Firebase download token after download. Synthetic Development Smoke Test Companies and one private denial fixture remain in dev only.
 - Windows gate implemented: system-browser Google sign-in -> Account -> entitlement -> canonical Memberships -> active Company selection/create -> existing shell. SQLite preload removed; live Manager/Admin authorization required to open drafts. Member view does not open draft SQLite.
-- Native relay is intentionally debug-only, loopback-bound, one-use nonce/strict origin, three-minute lifetime, memory-only credentials. Production native OAuth, persistent secure credentials and offline leases remain separate work. See README and VALIDATION for exact verification status.
+- Native relay is intentionally debug-only, loopback-bound, one-use nonce/strict origin, and three-minute lifetime. Production native OAuth and deployment/acceptance of the implemented protected offline lease remain separate work. See README and VALIDATION for exact verification status.
 
 ## Source preservation and native evidence
 

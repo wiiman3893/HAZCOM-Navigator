@@ -39,14 +39,31 @@ test('revoked Membership and invalid Firebase session never retain a workspace',
  await expect(page.getByTestId('authoring-workspace')).toHaveCount(0);
 });
 
-test('offline startup blocks authoring and online retry reauthorizes',async({page})=>{
- await page.addInitScript(()=>{localStorage.setItem('entry-test-user','account-a');});
- await page.goto('/entry.html');
- await page.evaluate(()=>{window.workspaceTest.offline=true;window.dispatchEvent(new Event('offline'));});
- await expect(page.getByRole('alert')).toContainText('Connect to the internet');
- await expect(page.getByTestId('authoring-workspace')).toHaveCount(0);
- await page.evaluate(()=>{window.workspaceTest.offline=false;window.dispatchEvent(new Event('online'));});
+test('offline startup uses a matching fixed lease, disables cloud work, and reconnect reauthorizes',async({page})=>{
+ await page.addInitScript(()=>{localStorage.setItem('entry-test-user','account-a');localStorage.setItem('workspace-test-lease',JSON.stringify({accountId:'account-a',companyId:'company-account-a',environment:'demo-hazcom-navigator',role:'manager',issuedAt:Date.now(),expiresAt:Date.now()+7*86400000,state:'writable'}));});
+ await page.goto('/entry.html?offline');
+ await expect(page.getByRole('heading',{name:'Offline authorization'})).toBeVisible();
  await expect(page.getByTestId('authoring-workspace')).toHaveText('primary');
+ await expect(page.getByTestId('authoring-mode')).toHaveText('writable');
+ await expect(page.getByTestId('publication-workspace')).toHaveCount(0);
+ const before=await page.evaluate(()=>window.workspaceTest.calls.length);
+ await page.evaluate(()=>{window.workspaceTest.offline=false;window.dispatchEvent(new Event('online'));});
+ await expect(page.getByTestId('publication-workspace')).toHaveText('primary');
+ const calls=await page.evaluate(start=>window.workspaceTest.calls.slice(start),before);
+ expect(calls.indexOf('close')).toBeLessThan(calls.findIndex(value=>value.startsWith('authorize:')));
+ expect(calls.some(value=>value.startsWith('lease:account-a/'))).toBe(true);
+});
+
+test('expired signed lease opens only read/export and no lease exposes no Company',async({page})=>{
+ await page.addInitScript(()=>{localStorage.setItem('entry-test-user','account-a');if(location.search.includes('nolease'))localStorage.removeItem('workspace-test-lease');else localStorage.setItem('workspace-test-lease',JSON.stringify({accountId:'account-a',companyId:'company-account-a',environment:'demo-hazcom-navigator',role:'manager',issuedAt:Date.now()-8*86400000,expiresAt:Date.now()-86400000,state:'read_only'}));});
+ await page.goto('/entry.html?offline');
+ await expect(page.getByRole('heading',{name:'Read and export workspace'})).toBeVisible();
+ await expect(page.getByTestId('authoring-mode')).toHaveText('read-only');
+ await expect(page.getByTestId('publication-workspace')).toHaveCount(0);
+ await page.evaluate(()=>localStorage.removeItem('workspace-test-lease'));
+ await page.goto('/entry.html?offline&nolease');
+ await expect(page.getByText('No offline authorization is available',{exact:false})).toBeVisible();
+ await expect(page.getByTestId('authoring-workspace')).toHaveCount(0);
 });
 
 test('account switch closes A and authorizes B before opening B workspace',async({page})=>{

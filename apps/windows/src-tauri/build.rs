@@ -1,4 +1,6 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=HAZCOM_OFFLINE_LEASE_ENVIRONMENT");
+    println!("cargo:rerun-if-env-changed=HAZCOM_OFFLINE_LEASE_PUBLIC_KEYS_JSON");
     // Non-secret build provenance; never embed environment dumps or filesystem paths.
     if let Ok(output)=std::process::Command::new("git").args(["rev-parse","HEAD"]).output(){
         let sha=String::from_utf8_lossy(&output.stdout).trim().to_string();

@@ -1,4 +1,4 @@
-use crate::workspace::{checked, WorkspaceState};
+use crate::workspace::{checked_writable, WorkspaceState};
 use lopdf::Document;
 use sha2::{Digest, Sha256};
 use std::{fs, io::Read, path::Path};
@@ -34,8 +34,7 @@ fn extract_pages(source:&[u8],start_page:u32,end_page:u32)->Result<ChildPdf,Stri
 #[tauri::command]
 pub async fn workspace_materialize_sds_pdf(state:tauri::State<'_,WorkspaceState>,token:String,session_id:String,start_page:u32,end_page:u32)->Result<ChildPdf,String>{
  let source= {
-  let guard=state.0.lock().await;let session=checked(&guard,&token)?;
-  if session.lease.read_only{return Err("WORKSPACE_EXPORT_ONLY".into());}
+  let mut guard=state.0.lock().await;let session=checked_writable(&mut guard,&token)?;
   if !crate::workspace::valid_id(&session_id){return Err("SDS_IMPORT_SESSION_INVALID".into());}
   let path:String=sqlx::query_scalar("SELECT managed_source_path FROM sds_import_session WHERE id=? AND company_id=?")
    .bind(&session_id).bind(&session.lease.company_id).fetch_optional(&session.pool).await.map_err(|e|e.to_string())?.ok_or("SDS_IMPORT_SESSION_NOT_FOUND")?;

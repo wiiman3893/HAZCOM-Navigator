@@ -201,7 +201,8 @@ pub(crate) async fn restore_to_workspace(root: &Path, workspace_id:String, compa
 
 /** Restores only into an isolated fresh workspace. The existing authoring database is never replaced. */
 #[tauri::command]
-pub async fn restore_company_backup(app: tauri::AppHandle, company_id: String, manifest: RestoreManifest, statements: Vec<RestoreStatement>, files: Vec<RestoreFile>) -> Result<RestoreResult, String> {
+pub async fn restore_company_backup(app: tauri::AppHandle, state:tauri::State<'_,crate::workspace::WorkspaceState>, token:String, company_id: String, manifest: RestoreManifest, statements: Vec<RestoreStatement>, files: Vec<RestoreFile>) -> Result<RestoreResult, String> {
+    {let mut guard=state.0.lock().await;let session=crate::workspace::checked_online_writable(&mut guard,&token)?;if session.lease.company_id!=company_id{return Err("WORKSPACE_COMPANY_MISMATCH".into());}}
     let root = app.path().app_data_dir().map_err(|e| e.to_string())?.join("restored-workspaces");
     restore_to_workspace(&root,format!("restore-{:032x}",rand::random::<u128>()),company_id, manifest, statements, files).await
 }

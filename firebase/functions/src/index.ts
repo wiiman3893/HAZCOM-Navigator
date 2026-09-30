@@ -8,6 +8,7 @@ import {hostedReadUntil,hostedAudience} from './hosted-access.js';
 
 setGlobalOptions({ region: 'us-central1', maxInstances: 3, memory: '512MiB', timeoutSeconds: 120 });
 export { beginPublication, uploadPublicationSds, finalizePublication } from './publication.js';
+export {issueWindowsOfflineAuthorizationLease} from './offline-lease.js';
 
 export const bootstrapAccount = onCall(async request => {
   const uid = await identity(request);

@@ -32,6 +32,19 @@ export type Role='administrator'|'manager'|'member';
 export interface CompanyAccess {id:string;name:string;contact_email:string;role:Role}
 export interface AccountSession {uid:string;email:string;companies:CompanyAccess[];activeCompanyId:string|null;entitlement:string;canCreate:boolean}
 export interface CompanyCoverageAuthorization {companyId:string;effectiveRole:Role;capabilities:{canAuthor:boolean;canExportBackup:boolean}}
+export interface OfflineAuthorization {accountId:string;companyId:string;environment:string;role:'administrator'|'manager';issuedAt:number;expiresAt:number;state:'writable'|'read_only'}
+
+/** The signed artifact crosses into native protected storage immediately. */
+export async function refreshOfflineAuthorization(uid:string,companyId:string):Promise<OfflineAuthorization>{
+ if(!windowsEnvironment||auth.currentUser?.uid!==uid||!navigator.onLine)throw Error('Connect and sign in to refresh offline authorization.');
+ const result=await call<{lease:string;metadata:{environment:string}}>('issueWindowsOfflineAuthorizationLease',{companyId});
+ return invoke<OfflineAuthorization>('store_offline_authorization',{accountId:uid,companyId,environment:result.metadata.environment,lease:result.lease});
+}
+export function listOfflineAuthorizations(uid:string):Promise<OfflineAuthorization[]>{
+ if(!firebaseConfig)throw Error('Windows configuration is unavailable.');
+ return invoke('list_offline_authorizations',{accountId:uid,environment:firebaseConfig.projectId});
+}
+export function clearOfflineAuthorizations(uid:string,companyId?:string):Promise<void>{return invoke('clear_offline_authorizations',{accountId:uid,companyId:companyId??null});}
 
 export async function verifyCompany(uid:string,companyId:string):Promise<CompanyAccess>{
   if(auth.currentUser?.uid!==uid || !navigator.onLine)throw Error('Connect and sign in to open this workspace.');

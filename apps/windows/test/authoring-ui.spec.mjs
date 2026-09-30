@@ -81,6 +81,12 @@ test('Publication gives visible Demo and grace reasons',async({page})=>{
  }
 });
 
+test('read-only workspace keeps local viewing and reports while authoring and publication are disabled',async({page})=>{
+ await page.goto('/?readonly');await page.getByRole('button',{name:'Work Areas',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Add work area'})).toBeDisabled();await page.getByRole('button',{name:'View details'}).first().click();await expect(page.getByRole('button',{name:'Edit',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'Reports & Export',exact:true}).click();await expect(page.getByRole('button',{name:/Export Chemical Inventory CSV/})).toBeEnabled();await expect(page.getByText('Publication is unavailable in this workspace.')).toBeVisible();
+});
+
 test('Bulk SDS batch import remains manually splittable and saves review drafts',async({page})=>{
  await page.goto('/');await page.getByRole('button',{name:'Chemical Library',exact:true}).click();await page.getByRole('button',{name:'Import SDS Batch',exact:true}).click();
  await page.getByLabel('Import SDS Batch PDF').setInputFiles({name:'scanned-stack.pdf',mimeType:'application/pdf',buffer:batchPdf(['','',''])});

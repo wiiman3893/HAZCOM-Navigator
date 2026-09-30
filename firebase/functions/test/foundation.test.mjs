@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, 
 import { ref, getBytes, uploadBytes, deleteObject, listAll } from 'firebase/storage';
 import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
+import {decodeJwt,decodeProtectedHeader,importSPKI,jwtVerify} from 'jose';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST || !process.env.FIREBASE_STORAGE_EMULATOR_HOST) throw new Error('Run using Firebase emulators: never tests against cloud data.');
 const projectId='demo-hazcom-navigator';
@@ -67,6 +68,28 @@ test('Professional creation grants Manager only; membership is separate from pai
   await assert.rejects(call('setMembership','professional',{companyId:'professional-a',uid:'professional',role:'administrator',active:true}));
   await assert.rejects(call('coverCompany','professional',{companyId:globalThis.customerCompany}));
   assert.equal((await db.doc('subscriptions/professional').get()).get('coveredCompanyCount'),2);
+});
+test('offline authoring lease is server-derived, fixed, deadline-clipped and role/revocation guarded',async()=>{
+ const {EMULATOR_PUBLIC_KEY}=await import('../lib/offline-lease.js');
+ const companyId=globalThis.customerCompany;
+ const issued=await call('issueWindowsOfflineAuthorizationLease','customer',{companyId});
+ const key=await importSPKI(EMULATOR_PUBLIC_KEY,'ES256');
+ const verified=await jwtVerify(issued.lease,key,{algorithms:['ES256'],issuer:`https://hazcom.navigator/offline-authorization/${projectId}`,audience:'hazcom-navigator-windows'});
+ assert.equal(decodeProtectedHeader(issued.lease).kid,'offline-lease-es256-v1');
+ assert.equal(verified.payload.sub,'customer');assert.equal(verified.payload.companyId,companyId);assert.equal(verified.payload.role,'administrator');assert.equal(verified.payload.canAuthor,true);assert.equal(verified.payload.env,projectId);assert.equal(verified.payload.v,1);
+ assert(Math.abs(Number(verified.payload.iat)*1000-Date.now())<30000);
+ assert(verified.payload.exp-verified.payload.iat<=7*86400);assert(verified.payload.exp-verified.payload.iat<=86400);
+ const manager=decodeJwt((await call('issueWindowsOfflineAuthorizationLease','professional',{companyId:'professional-a'})).lease);assert.equal(manager.role,'manager');
+ await assert.rejects(call('issueWindowsOfflineAuthorizationLease','customer',{companyId,role:'member',expiresAt:Date.now()+99*86400000}));
+ await call('setMembership','customer',{companyId,uid:'member',role:'member',active:true,workerId:null});
+ await assert.rejects(call('issueWindowsOfflineAuthorizationLease','member',{companyId}));
+ await assert.rejects(call('issueWindowsOfflineAuthorizationLease','customer',{companyId:'professional-a'}));
+ await db.doc(`companies/${companyId}/memberships/member`).update({active:false});
+ await db.doc(`accounts/member/memberships/${companyId}`).update({active:false});
+ await assert.rejects(call('issueWindowsOfflineAuthorizationLease','member',{companyId}));
+ await auth.updateUser('professional',{disabled:true});await assert.rejects(call('issueWindowsOfflineAuthorizationLease','professional',{companyId:'professional-a'}));await auth.updateUser('professional',{disabled:false});
+ const companyRef=db.doc('companies/professional-a');await companyRef.update({active:false});await assert.rejects(call('issueWindowsOfflineAuthorizationLease','professional',{companyId:'professional-a'}));await companyRef.update({active:true});
+ const subscriptionRef=db.doc('subscriptions/professional'),prior=(await subscriptionRef.get()).data();await subscriptionRef.update({validUntil:Timestamp.fromMillis(Date.now()-1000),graceUntil:Timestamp.fromMillis(Date.now()+86400000)});await assert.rejects(call('issueWindowsOfflineAuthorizationLease','professional',{companyId:'professional-a'}));await subscriptionRef.set(prior);
 });
 test('publication is atomic, immutable, revision-oriented and retry-safe',async()=> {
   const companyId=globalThis.customerCompany;

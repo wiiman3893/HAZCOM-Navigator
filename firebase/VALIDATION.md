@@ -1,5 +1,9 @@
 # Verified local working checkpoint — 2026-09-21
 
+## Windows offline authorization source validation — 2026-09-29
+
+`npm run test:firebase` passes 25/25 emulator tests, including the new signed offline lease callable. The test verifies ES256 signature/header and server-derived claims, Admin/Manager issuance, strict input rejection, Member/inactive/disabled/unauthorized denial, server time, seven-day maximum, earlier `paidThrough` clipping, and grace/read-export denial. This is emulator evidence only. The callable, secret, and matching native public trust root have not been deployed to a real Firebase project.
+
 ## Commercial entitlement V1 local/emulator validation — 2026-09-25
 
 The commercial source checkpoint passed `npm test` (9 core commercial tests, 8 sync tests, 9 authoring tests plus SQLite validation), `npm run test:firebase` (16 emulator tests), `npm run build`, Firebase Functions build, and Windows `cargo check`. The emulator suite covered Demo restrictions, legacy paid publication, invited Manager access, Pro-seat SDS read/revocation, coverage transfer, downgrade, release, recovery, and guarded cleanup of a synthetic Company/SDS. No real Firebase deployment, production email, or payment-provider call was made. See [the entitlement handoff](../docs/ENTITLEMENT_ENGINE_HANDOFF.md) for scope and remaining live-integration work.

@@ -19,7 +19,7 @@ Startup begins in an explicit Firebase restoration state. No prior Company, Acco
 
 The trusted callable identity guard loads the Firebase Auth user, requires an enabled Google provider, and rejects an ID token whose `auth_time` predates `tokensValidAfterTime`. Membership, Company activity, role, and current commercial coverage remain server-authoritative. Focus, reconnect, Firebase ID-token changes, the existing Company/Membership listeners, and the 60-second refresh continue to revalidate access. Confirmed failure clears Account/Company state and closes SQLite. Detection is bounded by those server calls, listeners, and Firebase token refresh behavior; this is not a claim of instantaneous offline revocation.
 
-If a persisted identity restores while the computer cannot complete online authorization, the app retains the Firebase identity and local files but does not open authoring. Reconnect or Refresh access retries the current checks. The seven-day offline authorization lease is intentionally not implemented.
+If a persisted identity restores while the computer cannot complete online authorization, the later offline-authorization milestone can now open only Companies covered by a native-verified signed lease. See [Windows offline authorization handoff](WINDOWS_OFFLINE_AUTHORIZATION_HANDOFF.md) for current behavior; this document otherwise records the underlying Firebase persistence checkpoint.
 
 ## Sign-out and account switching
 
@@ -47,6 +47,6 @@ Firebase Auth data is confined to Firebase-managed WebView persistence. Applicat
 
 ## Remaining acceptance
 
-The persistence implementation is exercised against the local Firebase Auth emulator in a real Edge persistent profile, which is the same browser storage API family used by WebView2. A packaged HazCom Navigator executable has not yet completed a human Google sign-in, full native process exit, relaunch, automatic restoration, and sign-out/relaunch acceptance against a legitimate production Firebase configuration. No production Firebase project, OAuth configuration, deployment, real user mutation, seven-day offline lease, billing, installer signing, updater, mobile feature, or application-level SQLite encryption is included.
+The persistence implementation is exercised against the local Firebase Auth emulator in a real Edge persistent profile, which is the same browser storage API family used by WebView2. A packaged HazCom Navigator executable has not yet completed a human Google sign-in, full native process exit, relaunch, automatic restoration, and sign-out/relaunch acceptance against a legitimate production Firebase configuration. This persistence checkpoint itself did not include the later offline lease. No production Firebase project, OAuth configuration, deployment, real user mutation, billing, installer signing, updater, mobile feature, or application-level SQLite encryption is included.
 
-The next milestone is the separately designed seven-day server-authorized offline lease, after packaged production OAuth and native restart acceptance are available.
+The seven-day server-authorized offline lease is now implemented and emulator/native/UI validated in source. Packaged production OAuth, real signing-key deployment, and real native outage acceptance remain pending.

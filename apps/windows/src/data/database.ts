@@ -1,13 +1,14 @@
 import {diagnostics,observe} from '../diagnostics/session';
 import {invoke} from '@tauri-apps/api/core';
 import {doc,getDocFromServer} from 'firebase/firestore';
-import { auth,call,db as cloud,verifyCompany, type CompanyAccess } from '../auth/firebase';
+import { auth,call,db as cloud,verifyCompany, type CompanyAccess, type OfflineAuthorization } from '../auth/firebase';
 import {verifyWindowsSdsIntegrity} from './publication-integrity';
 import {buildPublication} from '@hazcom/sync';
 import {WorkspaceLifecycle,refreshWorkspaceMode} from './workspace-lifecycle';
 
 export type WorkspaceLease={workspaceId:string;companyId:string;token:string;readOnly:boolean;selectionWarning?:string|null};
 export type WorkspaceEntry={workspaceId:string;companyId:string;kind:string;available:boolean;reason:string|null};
+export type WorkspaceAccess={offline?:OfflineAuthorization};
 export class WorkspaceDatabase {
  constructor(readonly lease:WorkspaceLease){}
  select<T=unknown[]>(statement:string,values:unknown[]=[]):Promise<T>{return invoke('workspace_select',{token:this.lease.token,statement,values});}
@@ -34,34 +35,35 @@ async function authorizeImpl(uid:string,companyId:string){
  if(auth.currentUser?.uid!==uid||account.get('activeCompanyId')!==companyId||access.role==='member'||(!coverage.capabilities.canAuthor&&!coverage.capabilities.canExportBackup))throw Error('WORKSPACE_AUTHORIZATION_REQUIRED');
  return !coverage.capabilities.canAuthor;
 }
-async function selectWorkspaceImpl(uid:string,companyId:string,workspaceId:string):Promise<WorkspaceDatabase>{
+async function selectWorkspaceImpl(uid:string,companyId:string,workspaceId:string,access?:WorkspaceAccess):Promise<WorkspaceDatabase>{
  return lifecycle.change(async run=>{
-  const readOnly=await authorize(uid,companyId);
+  const readOnly=access?.offline?access.offline.state==='read_only':await authorize(uid,companyId);
   if(run!==lifecycle.generation)throw Error('Workspace access changed.');
-  const lease=await invoke<WorkspaceLease>('activate_workspace',{accountId:uid,companyId,workspaceId,readOnly});
+  const lease=await invoke<WorkspaceLease>('activate_workspace',{accountId:uid,companyId,workspaceId,readOnly,offline:!!access?.offline,environment:access?.offline?.environment??null});
   if(run!==lifecycle.generation){await invoke('close_workspace');throw Error('Workspace access changed.');}
   diagnostics.context={...diagnostics.context,company:companyId,workspace:workspaceId,readOnly};diagnostics.emit('workspace.mode','changed',{readOnly});active=new WorkspaceDatabase(lease);owner=uid;return active;
  });
 }
-export function ensureWorkspace(uid:string,companyId:string):Promise<{database:WorkspaceDatabase;notice:string|null}>{
- return observe('workspace.open',()=>lifecycle.open(uid+'/'+companyId,()=>restoreSelection(uid,companyId)),{company:companyId});
+export function ensureWorkspace(uid:string,companyId:string,access?:WorkspaceAccess):Promise<{database:WorkspaceDatabase;notice:string|null}>{
+ return observe('workspace.open',()=>lifecycle.open(uid+'/'+companyId+'/'+(access?.offline?'offline':'online'),()=>restoreSelection(uid,companyId,access)),{company:companyId});
 }
-async function restoreSelection(uid:string,companyId:string):Promise<{database:WorkspaceDatabase;notice:string|null}>{
+async function restoreSelection(uid:string,companyId:string,access?:WorkspaceAccess):Promise<{database:WorkspaceDatabase;notice:string|null}>{
  await lifecycle.settled();
  if(active&&owner===uid&&active.lease.companyId===companyId){
+  if(access?.offline)return {database:active,notice:active.lease.selectionWarning??null};
   const database=await refreshWorkspaceMode(active,{authorize:()=>authorize(uid,companyId),currentToken:()=>active?.lease.token,close:closeWorkspace,reopen:id=>selectWorkspace(uid,companyId,id)});
   return {database,notice:database.lease.selectionWarning??null};
  }
  let remembered:string|null=null,notice:string|null=null;
  try{remembered=await invoke<string|null>('remembered_workspace',{accountId:uid,companyId});}
  catch(error){notice=`Saved workspace preference could not be read; opening the primary workspace for this Company. ${String(error)}`;}
- try{const database=await selectWorkspace(uid,companyId,remembered??'primary');return {database,notice:notice??database.lease.selectionWarning??null};}
+ try{const database=await selectWorkspace(uid,companyId,remembered??'primary',access);return {database,notice:notice??database.lease.selectionWarning??null};}
  catch(error){
   if(!remembered||remembered==='primary')throw error;
-  return {database:await selectWorkspace(uid,companyId,'primary'),notice:`Saved workspace unavailable; primary opened for this Company. ${String(error)}`};
+  return {database:await selectWorkspace(uid,companyId,'primary',access),notice:`Saved workspace unavailable; primary opened for this Company. ${String(error)}`};
  }
 }
-export async function listWorkspaces(uid:string,companyId:string){await authorize(uid,companyId);return invoke<WorkspaceEntry[]>('list_workspaces',{companyId});}
+export async function listWorkspaces(uid:string,companyId:string,access?:WorkspaceAccess){if(!access?.offline)await authorize(uid,companyId);return invoke<WorkspaceEntry[]>('list_workspaces',{companyId});}
 
 export interface DashboardCounts {
   companies: number;
@@ -110,4 +112,4 @@ export async function buildWindowsPublication(uid:string,companyId:string,files:
 
 function authorize(uid:string,companyId:string){return observe('workspace.authorization',()=>authorizeImpl(uid,companyId),{company:companyId});}
 
-export function selectWorkspace(uid:string,companyId:string,workspaceId:string):Promise<WorkspaceDatabase>{return observe('workspace.switch',()=>selectWorkspaceImpl(uid,companyId,workspaceId),{company:companyId,workspace:workspaceId});}
+export function selectWorkspace(uid:string,companyId:string,workspaceId:string,access?:WorkspaceAccess):Promise<WorkspaceDatabase>{return observe('workspace.switch',()=>selectWorkspaceImpl(uid,companyId,workspaceId,access),{company:companyId,workspace:workspaceId});}
