@@ -23,7 +23,7 @@
     "test:sync:emulator": "npm run build:sync && npm run build -w @hazcom/firebase-functions && npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage,functions --project demo-hazcom-navigator --config firebase/firebase.json \"node --test packages/sync/test/emulator.test.mjs\"",
     "test:scale": "npm run build:sync && npm run build -w @hazcom/firebase-functions && npx -y firebase-tools@latest emulators:exec --only auth,firestore,storage,functions --project demo-hazcom-navigator --config firebase/firebase.json \"node --test packages/sync/test/scalable.test.mjs\"",
     "build:authoring": "npm run build:core && npm run build -w @hazcom/authoring",
-    "test:authoring": "npm run build:authoring && npm run test -w @hazcom/authoring",
+    "test:authoring": "npm run build:authoring && npm run build -w @hazcom/firebase-functions && npm run test -w @hazcom/authoring",
     "test:windows:publication": "npm run build:sync && node --test apps/windows/test/publication-workflow.test.mjs apps/windows/test/workspace-lifecycle.test.mjs",
     "test:windows:auth": "npm run test:auth -w @hazcom/windows",
     "test:windows:auth:persistence": "npx -y firebase-tools@latest emulators:exec --only auth --project demo-hazcom-navigator --config firebase/firebase.json \"npm run test:auth:persistence -w @hazcom/windows\"",
