@@ -14,6 +14,7 @@ test('restored identity stays behind live authorization and sign-out survives re
  await page.getByRole('button',{name:'Sign out'}).click();
  await expect(page.getByRole('button',{name:'Sign in with Google'})).toBeVisible();
  expect(await page.evaluate(()=>localStorage.getItem('entry-test-user'))).toBeNull();
+ expect(await page.evaluate(()=>localStorage.getItem('workspace-test-lease'))).toBeNull();
  await page.reload();
  await expect(page.getByRole('button',{name:'Sign in with Google'})).toBeVisible();
  await expect(page.getByTestId('authoring-workspace')).toHaveCount(0);
