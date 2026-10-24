@@ -10,12 +10,29 @@ const test:any={calls,readOnly:params.has('readonly'),failRefresh:false,revoked:
 export const db={},configurationError='';
 export async function signIn(){auth.currentUser={uid:test.nextUid,email:`${test.nextUid}@example.test`};localStorage.setItem('entry-test-user',test.nextUid);listener?.(auth.currentUser);}
 export async function signOutAccount(){calls.push('signout');localStorage.removeItem('entry-test-user');auth.currentUser=null;listener?.(null);}
-export async function loadAccount(uid:string){calls.push('load:'+uid);test.authorizationComplete=false;await new Promise(resolve=>setTimeout(resolve,50));if(test.offline)throw Object.assign(Error('offline'),{code:'functions/unavailable'});if(test.revoked)throw Object.assign(Error('revoked'),{code:'functions/permission-denied'});return {uid,email:`${uid}@example.test`,companies:[{id:`company-${uid}`,name:`Company ${uid}`,contact_email:'qa@example.test',role:'manager'}],activeCompanyId:`company-${uid}`,entitlement:'Company · Active',canCreate:false};}
+export async function loadAccount(uid:string){calls.push('load:'+uid);test.authorizationComplete=false;await new Promise(resolve=>setTimeout(resolve,50));if(test.offline)throw Object.assign(Error('offline'),{code:'functions/unavailable'});if(test.revoked)throw Object.assign(Error('revoked'),{code:'functions/permission-denied'});if(params.has('demo')){
+ const ids=test.coveredCompanyIds??[],selected=test.selectedCompanyId??null;
+ return {uid,email:`${uid}@example.test`,companies:ids.map((id:string)=>({id,name:id,contact_email:'qa@example.test',role:test.demoType==='pro'?'manager':'administrator'})),activeCompanyId:test.activeCompanyId??null,entitlement:`${test.demoType==='pro'?'Pro':'Company'} Demo · Active`,canCreate:ids.length<(test.demoType==='pro'?3:1),demo:{type:test.demoType??'company',coveredCompanyIds:ids,selectedCompanyId:selected}};
+ }return {uid,email:`${uid}@example.test`,companies:[{id:`company-${uid}`,name:`Company ${uid}`,contact_email:'qa@example.test',role:'manager'}],activeCompanyId:`company-${uid}`,entitlement:'Company · Active',canCreate:false};}
 export async function verifyActiveCompanyAuthorization(uid:string,company:any){calls.push('authorize:'+uid+'/'+company.id);await new Promise(resolve=>setTimeout(resolve,80));if(test.inactive)throw Object.assign(Error('Company access is no longer active.'),{code:'functions/permission-denied'});test.authorizationComplete=true;return {companyId:company.id,effectiveRole:company.role,capabilities:{canAuthor:true,canExportBackup:true}};}
 export async function refreshOfflineAuthorization(uid:string,companyId:string){calls.push('lease:'+uid+'/'+companyId);const lease={accountId:uid,companyId,environment:'demo-hazcom-navigator',role:'manager',issuedAt:Date.now(),expiresAt:Date.now()+7*86400000,state:'writable'};localStorage.setItem('workspace-test-lease',JSON.stringify(lease));return lease;}
 export async function listOfflineAuthorizations(uid:string){const value=localStorage.getItem('workspace-test-lease');if(!value)return [];const lease=JSON.parse(value);return lease.accountId===uid?[lease]:[];}
 export async function clearOfflineAuthorizations(uid:string,companyId?:string){const value=localStorage.getItem('workspace-test-lease');if(!value)return;const lease=JSON.parse(value);if(lease.accountId===uid&&(!companyId||lease.companyId===companyId))localStorage.removeItem('workspace-test-lease');}
-export async function call(name:string){calls.push('call:'+name);return {};}
+export async function call(name:string,data:any={}){
+ calls.push('call:'+name);
+ if(name==='switchDemoType'){
+  if(test.failDemoSwitch)throw Error('Demo switch failed');
+  test.demoType=data.demoType;test.selectedCompanyId=data.selectedCompanyId;
+  calls.push('demo:'+data.demoType+':'+(data.selectedCompanyId??'none'));
+ }
+ if(name==='createCompany'){
+  test.coveredCompanyIds=[...(test.coveredCompanyIds??[]),data.companyId];
+  if(test.demoType!=='pro')test.selectedCompanyId=data.companyId;
+  return {companyId:data.companyId};
+ }
+ if(name==='setActiveCompany')test.activeCompanyId=data.companyId;
+ return {};
+}
 const entries=['primary','restored-a','restored-b','restored-broken'].map(workspaceId=>({workspaceId,companyId:'workspace-company',kind:workspaceId==='primary'?'primary':'restored',available:workspaceId!=='restored-broken',reason:workspaceId==='restored-broken'?'WORKSPACE_INTEGRITY_FAILED':null}));
 export async function closeWorkspace(){calls.push('close');active=null;}
 export async function ensureWorkspace(_uid?:string,_company?:string,access?:any){calls.push('ensure:'+auth.currentUser?.uid);if(!access?.offline&&!test.authorizationComplete)throw Error('WORKSPACE_OPENED_BEFORE_AUTHORIZATION');if((window as any).workspaceTest.failRefresh){active=null;throw Error('Reopen failed safely');}const saved=localStorage.getItem('workspace-test-selection')??'primary';active={lease:{workspaceId:saved==='restored-missing'?'primary':saved,token:crypto.randomUUID(),readOnly:access?.offline?.state==='read_only'||(window as any).workspaceTest.readOnly}};return {database:active,notice:saved==='restored-missing'?'Saved workspace unavailable; primary opened for this Company.':null};}
