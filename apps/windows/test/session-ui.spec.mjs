@@ -81,8 +81,8 @@ test('account switch closes A and authorizes B before opening B workspace',async
 test('Fresh Demo account can select Pro before creating its first Company',async({page})=>{
  await page.goto('/entry.html?restored&demo');
  const picker=page.getByRole('region',{name:'Demo plan',exact:true});
- await expect(picker.getByLabel('Demo plan',{exact:true})).toHaveValue('company');
- await picker.getByLabel('Demo plan',{exact:true}).selectOption('pro');
+ await expect(picker.getByRole('combobox',{name:'Demo plan',exact:true})).toHaveValue('company');
+ await picker.getByRole('combobox',{name:'Demo plan',exact:true}).selectOption('pro');
  await picker.getByRole('button',{name:'Apply Demo choice'}).click();
  await expect(page.getByText('Pro Demo · Active',{exact:true})).toBeVisible();
  expect(await page.evaluate(()=>window.workspaceTest.calls.includes('demo:pro:none'))).toBe(true);
@@ -91,23 +91,23 @@ test('Fresh Demo account can select Pro before creating its first Company',async
  await page.getByRole('button',{name:'Create Company',exact:true}).click();
  await expect(page.getByTestId('authoring-workspace')).toHaveText('primary');
  await expect(page.locator('aside').getByText('manager',{exact:true})).toBeVisible();
- await expect(page.getByRole('region',{name:'Demo plan'}).getByLabel('Demo plan',{exact:true})).toHaveValue('pro');
+ await expect(page.getByRole('region',{name:'Demo plan'}).getByRole('combobox',{name:'Demo plan',exact:true})).toHaveValue('pro');
 });
 
 test('Company Demo selection requires a retained Company and failed switches remain visible',async({page})=>{
  await page.goto('/entry.html?restored&demo');
- await expect(page.getByLabel('Demo plan',{exact:true})).toBeVisible();
+ await expect(page.getByRole('combobox',{name:'Demo plan',exact:true})).toBeVisible();
  await page.evaluate(()=>{window.workspaceTest.demoType='pro';window.workspaceTest.coveredCompanyIds=['client-a','client-b'];});
  await page.getByRole('button',{name:'Refresh access'}).click();
  const picker=page.getByRole('region',{name:'Demo plan'});
- await picker.getByLabel('Demo plan',{exact:true}).selectOption('company');
+ await picker.getByRole('combobox',{name:'Demo plan',exact:true}).selectOption('company');
  await picker.getByLabel('Company to keep active').selectOption('client-b');
  await expect(picker.getByText(/will be parked/)).toBeVisible();
  await picker.getByRole('button',{name:'Apply Demo choice'}).click();
  await expect(page.getByText('Company Demo · Active',{exact:true})).toBeVisible();
  expect(await page.evaluate(()=>window.workspaceTest.calls.includes('demo:company:client-b'))).toBe(true);
  await page.evaluate(()=>{window.workspaceTest.failDemoSwitch=true;});
- await picker.getByLabel('Demo plan',{exact:true}).selectOption('pro');
+ await picker.getByRole('combobox',{name:'Demo plan',exact:true}).selectOption('pro');
  await picker.getByRole('button',{name:'Apply Demo choice'}).click();
  await expect(page.getByRole('alert')).toContainText('Demo switch failed');
  await expect(page.getByText('Company Demo · Active',{exact:true})).toBeVisible();
