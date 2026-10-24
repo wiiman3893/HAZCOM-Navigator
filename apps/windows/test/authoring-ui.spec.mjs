@@ -1,6 +1,31 @@
 import {test,expect} from '@playwright/test';
 import {dummyPdf} from '../../../packages/sync/test/fixtures.mjs';
 
+test('Untouched creation forms close on navigation, including defaults and Company switch',async({page})=>{
+ await page.goto('/');
+ for(const [screen,add] of [['Work Areas','Add work area'],['Workers','Add worker'],['Chemical Library','Add chemical product'],['Assignments & Training','Add assignment']]){
+  await page.getByRole('button',{name:screen,exact:true}).click();
+  await page.getByRole('button',{name:add,exact:true}).click();
+  await expect(page.getByRole('region',{name:'Record form'})).toBeVisible();
+  await page.getByRole('button',{name:'Management Home',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Record form'})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Management Home',exact:true})).toBeVisible();
+ }
+ await page.getByRole('button',{name:'Workers',exact:true}).click();await page.getByRole('button',{name:'Add worker',exact:true}).click();
+ await page.getByLabel('Test Company').selectOption('empty-company');
+ await expect(page.getByLabel('Test Company')).toHaveValue('empty-company');
+ await expect(page.getByRole('region',{name:'Record form'})).toHaveCount(0);
+});
+
+test('SDS import is reachable directly from Management Home and navigation',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Import SDS PDF',exact:true}).click();
+ await expect(page.getByLabel('Import SDS Batch PDF')).toBeVisible();
+ await page.getByRole('button',{name:'Management Home',exact:true}).click();
+ await page.getByRole('button',{name:'SDS Batch Import',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Process / retry OCR'})).toHaveCount(0);
+ await expect(page.getByLabel('Import SDS Batch PDF')).toBeEnabled();
+});
+
 function batchPdf(pages){
  const objects=['1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj'],kids=[];
  for(let i=0;i<pages.length;i++){const pageId=3+i*2,contentId=pageId+1;kids.push(pageId+' 0 R');const text=String(pages[i]??'').replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');const stream=text?`BT (${text}) Tj ET`:'q Q';objects.push(`${pageId} 0 obj\n<< /Type /Page /Parent 2 0 R /Contents ${contentId} 0 R >>\nendobj`);objects.push(`${contentId} 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj`);}
@@ -96,3 +121,4 @@ test('Bulk SDS batch import remains manually splittable and saves review drafts'
  await page.getByRole('button',{name:'Save review drafts'}).click();await expect(page.getByText('Review drafts saved. No Chemical Products were created.')).toBeVisible();
  await page.getByRole('button',{name:'Process / retry OCR'}).click();await expect(page.getByText(/Completed: 3/)).toBeVisible();await page.getByLabel('SDS date').fill('2026-09-28');await page.getByLabel('Candidate 1 approval action').selectOption('update');await page.getByLabel('Candidate 1 existing Product').selectOption('ui-chemical');await page.getByRole('button',{name:'Approve and update selected Product'}).click();await expect(page.getByText('Candidate approved. Existing Chemical Product updated and its prior SDS retained in history.')).toBeVisible();await expect(page.getByText(/Chemical Product was updated/)).toBeVisible();
 });
+

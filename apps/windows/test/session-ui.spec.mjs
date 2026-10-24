@@ -2,6 +2,26 @@ import {test,expect} from '@playwright/test';
 
 test.beforeEach(async({context})=>{await context.clearCookies();});
 
+test('fresh account can choose Pro Demo before creating its first Company',async({page})=>{
+ await page.goto('/entry.html?restored&new-account&no-company');
+ await expect(page.getByRole('heading',{name:'Create Company',exact:true})).toBeVisible();
+ const selector=page.getByRole('combobox',{name:'Demo account type'});
+ await selector.selectOption('pro');await expect(selector).toHaveValue('pro');
+ expect(await page.evaluate(()=>window.workspaceTest.calls)).toContain('demo:pro:null');
+ await expect(page.getByRole('heading',{name:'Create Company',exact:true})).toBeVisible();
+});
+
+test('Demo users can select Pro and Company without granting paid access',async({page})=>{
+ await page.goto('/entry.html?restored&new-account');
+ const selector=page.getByRole('combobox',{name:'Demo account type'});
+ await expect(selector).toHaveValue('company');await selector.selectOption('pro');
+ await expect(selector).toHaveValue('pro');
+ expect(await page.evaluate(()=>window.workspaceTest.calls)).toContain('demo:pro:null');
+ await selector.selectOption('company');await expect(selector).toHaveValue('company');
+ expect(await page.evaluate(()=>window.workspaceTest.calls)).toContain('demo:company:company-account-a');
+ await expect(page.getByText(/not a paid subscription/)).toBeVisible();
+});
+
 test('restored identity stays behind live authorization and sign-out survives restart',async({page})=>{
  await page.goto('/entry.html?restored');
  await expect(page.getByRole('status')).toContainText(/Restoring Firebase|Checking your account/);
@@ -77,3 +97,4 @@ test('account switch closes A and authorizes B before opening B workspace',async
  expect(calls.indexOf('authorize:account-b/company-account-b')).toBeLessThan(calls.indexOf('ensure:account-b'));
  await expect(page.getByText('Company account-a',{exact:true})).toHaveCount(0);
 });
+

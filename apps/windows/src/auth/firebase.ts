@@ -30,7 +30,7 @@ export const signIn=()=>observe('auth.signin',signInImpl);
 export const signOutAccount=()=>observe('auth.signout',()=>signOut(auth));
 export type Role='administrator'|'manager'|'member';
 export interface CompanyAccess {id:string;name:string;contact_email:string;role:Role}
-export interface AccountSession {uid:string;email:string;companies:CompanyAccess[];activeCompanyId:string|null;entitlement:string;canCreate:boolean}
+export interface AccountSession {uid:string;email:string;companies:CompanyAccess[];activeCompanyId:string|null;entitlement:string;canCreate:boolean;demoType?:'company'|'pro'}
 export interface CompanyCoverageAuthorization {companyId:string;effectiveRole:Role;capabilities:{canAuthor:boolean;canExportBackup:boolean}}
 export interface OfflineAuthorization {accountId:string;companyId:string;environment:string;role:'administrator'|'manager';issuedAt:number;expiresAt:number;state:'writable'|'read_only'}
 
@@ -68,7 +68,7 @@ export async function loadAccount(uid:string):Promise<AccountSession>{
   const canCreate=commercial.capabilities.canCreateCompanies&&(entitlement?.coveredCompanyCount??0)<commercial.capabilities.maxCoveredCompanies;
   const label=commercial.plan==='demo'?`${commercial.demoType==='pro'?'Pro':'Company'} Demo`:commercial.plan==='pro'?'Pro':commercial.plan==='company'?'Company':'No personal subscription';
   const state=commercial.status==='active'?'Active':commercial.status==='grace'?'Grace and export period':'Read access only';
-  return {uid,email:auth.currentUser?.email??'',companies:companies.sort((a,b)=>a.name.localeCompare(b.name)),activeCompanyId:account.get('activeCompanyId')??null,entitlement:`${label} · ${state}`,canCreate};
+  return {uid,email:auth.currentUser?.email??'',companies:companies.sort((a,b)=>a.name.localeCompare(b.name)),activeCompanyId:account.get('activeCompanyId')??null,entitlement:`${label} · ${state}`,canCreate,demoType:commercial.plan==='demo'?commercial.demoType??undefined:undefined};
 }
 
 /** A restored Firebase identity is never sufficient to expose a Company. */
@@ -79,3 +79,4 @@ export async function verifyActiveCompanyAuthorization(uid:string,company:Compan
   if(company.role!=='member'&&!result.capabilities.canAuthor&&!result.capabilities.canExportBackup)throw Error('Company coverage does not currently permit Windows workspace access.');
   return result;
 }
+

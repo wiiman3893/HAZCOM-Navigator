@@ -111,6 +111,14 @@ function AuthenticatedApp(){
     await observe('company.access',()=>call('setActiveCompany',{companyId:id}),{company:id});await refresh();
   }
   async function create(){creatingId.current??=crypto.randomUUID();await call('createCompany',{companyId:creatingId.current,company:{name:name.trim(),contact_email:email.trim()}}).then(async result=>{await call('setActiveCompany',{companyId:(result as {companyId:string}).companyId});});creatingId.current=null;setName('');await refresh();}
+  async function changeDemoType(demoType:'company'|'pro'){
+    if(!window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))return;
+    const selectedCompanyId=company?.id??session?.activeCompanyId??(session?.companies.length===1?session.companies[0].id:null);
+    if(demoType==='company'&&session?.companies.length&&!selectedCompanyId)throw Error('Choose the Company you want to use for Company Demo first.');
+    await call('switchDemoType',{demoType,selectedCompanyId:demoType==='company'?selectedCompanyId:null});
+    await refresh();
+  }
+  const demoChoice=session?.demoType&&!offlineLease?<label>Demo account type<select aria-label="Demo account type" value={session.demoType} disabled={busy||!navigator.onLine} onChange={e=>{const value=e.currentTarget.value as 'company'|'pro';void action(()=>changeDemoType(value));}}><option value="company">Company Demo</option><option value="pro">Pro Demo</option></select><small>Company is for your own organization; Pro is for managing client Companies. This selects a demo, not a paid subscription.</small></label>:null;
   const controls=<><button disabled={busy||!navigator.onLine} onClick={()=>void beginIdentity(auth.currentUser)}>Refresh access</button><button disabled={busy} onClick={()=>{if(window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))void action(explicitSignOut);}}>Sign out</button></>;
   if(!session || !company)return <main className="entry"><section className="panel">
     <h1>HazCom Navigator</h1><p>{phase==='restoring'?'Restoring your saved sign-in…':phase==='authorizing'?'Your identity is restored. Checking current Account, Company, Membership, and coverage access…':'Sign in, then choose your Company workspace.'}</p>
@@ -118,7 +126,7 @@ function AuthenticatedApp(){
     {(phase==='restoring'||phase==='authorizing')&&<p role="status">{phase==='restoring'?'Restoring Firebase authentication…':'Checking your account and Company access…'}</p>}
     {phase==='signed-out'?<button disabled={busy||!!configurationError} onClick={()=>void action(signIn)}>Sign in with Google</button>:phase!=='restoring'?<>
       <div className="actions">{controls}</div>
-      {session&&<><p>{session.email}</p><p>{session.entitlement}</p>{offlineLease&&<p>Offline Company names are hidden until the server is available. Authorization expires {new Date(offlineLease.expiresAt).toLocaleString()}.</p>}
+      {session&&<><p>{session.email}</p><p>{session.entitlement}</p>{demoChoice}{offlineLease&&<p>Offline Company names are hidden until the server is available. Authorization expires {new Date(offlineLease.expiresAt).toLocaleString()}.</p>}
         <label>Company<select aria-label="Company" disabled={busy} value="" onChange={e=>{const id=e.currentTarget.value;e.currentTarget.value="";void action(()=>choose(id));}}><option value="">Choose a Company</option>{session.companies.map(c=><option key={c.id} value={c.id}>{c.name} · {c.role}</option>)}</select></label>
         {!session.companies.length&&<p>No active Company memberships yet. Ask your Company administrator for access, or create a Company with an eligible subscription.</p>}
         {session.canCreate&&<form onSubmit={e=>{e.preventDefault();void action(create);}}><h2>Create Company</h2><label>Company name<input required maxLength={300} value={name} onChange={e=>setName(e.target.value)}/></label><label>Contact email<input required type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><button disabled={busy}>Create Company</button></form>}
@@ -127,7 +135,7 @@ function AuthenticatedApp(){
   </section></main>;
   return <div className="shell"><aside><div className="brand"><strong>HazCom Navigator</strong><span>Windows workspace</span></div>
     <label className="company-label">Active Company<select value={company.id} disabled={busy} onChange={e=>{const id=e.currentTarget.value;e.currentTarget.value=company.id;void action(()=>choose(id));}}><option value="">Choose another Company</option>{session.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-    <p>{company.role}</p><p>{session.entitlement}</p><div className="actions">{controls}</div>
+    <p>{company.role}</p><p>{session.entitlement}</p>{demoChoice}<div className="actions">{controls}</div>
   </aside><Workspace key={`${session.uid}/${company.id}/${company.role}/${offlineLease?.state??'online'}`} uid={session.uid} company={company} error={error} offline={offlineLease}/></div>;
 }
 
@@ -166,3 +174,4 @@ function authorizationMessage(error:unknown){
  return value;
 }
 function isNetworkError(error:unknown){const code=typeof error==='object'&&error!==null&&'code'in error?String((error as {code?:unknown}).code):'';return !navigator.onLine||code.includes('unavailable')||code.includes('network-request-failed')||code.includes('deadline-exceeded');}
+
