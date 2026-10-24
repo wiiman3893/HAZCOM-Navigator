@@ -96,3 +96,43 @@ test('Bulk SDS batch import remains manually splittable and saves review drafts'
  await page.getByRole('button',{name:'Save review drafts'}).click();await expect(page.getByText('Review drafts saved. No Chemical Products were created.')).toBeVisible();
  await page.getByRole('button',{name:'Process / retry OCR'}).click();await expect(page.getByText(/Completed: 3/)).toBeVisible();await page.getByLabel('SDS date').fill('2026-09-28');await page.getByLabel('Candidate 1 approval action').selectOption('update');await page.getByLabel('Candidate 1 existing Product').selectOption('ui-chemical');await page.getByRole('button',{name:'Approve and update selected Product'}).click();await expect(page.getByText('Candidate approved. Existing Chemical Product updated and its prior SDS retained in history.')).toBeVisible();await expect(page.getByText(/Chemical Product was updated/)).toBeVisible();
 });
+
+test('Untouched forms close on navigation while entered data stays protected',async({page})=>{
+ await page.goto('/');
+ for(const [screen,add] of [['Work Areas','Add work area'],['Chemical Library','Add chemical product'],['Workers','Add worker'],['Assignments & Training','Add assignment']]){
+  await page.getByRole('button',{name:screen,exact:true}).click();
+  await page.getByRole('button',{name:add,exact:true}).click();
+  await expect(page.getByRole('region',{name:'Record form'})).toBeVisible();
+  await page.getByRole('button',{name:'Management Home',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Management Home',exact:true})).toBeVisible();
+  await expect(page.getByRole('region',{name:'Record form'})).toHaveCount(0);
+ }
+ await page.getByRole('button',{name:'Work Areas',exact:true}).click();
+ await page.getByRole('button',{name:'View details'}).first().click();
+ await page.getByRole('button',{name:'Edit',exact:true}).click();
+ await page.getByRole('button',{name:'Workers',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Workers',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Add worker',exact:true}).click();
+ const form=page.getByRole('region',{name:'Record form'});
+ await form.getByLabel('Name',{exact:true}).fill('Keep this draft');
+ await page.getByRole('button',{name:'Work Areas',exact:true}).click();
+ await expect(form.getByLabel('Name',{exact:true})).toHaveValue('Keep this draft');
+ await expect(page.getByText('Save or cancel the open form before leaving.')).toBeVisible();
+ await form.getByLabel('Name',{exact:true}).fill('');
+ await page.getByLabel('Test Company').selectOption('empty-company');
+ await expect(page.getByLabel('Test Company')).toHaveValue('empty-company');
+ await expect(form).toHaveCount(0);
+});
+
+test('SDS import is discoverable from the library and persistent navigation',async({page})=>{
+ await page.goto('/');
+ await page.getByRole('button',{name:'Chemical Library',exact:true}).click();
+ const importPanel=page.getByRole('region',{name:'Import safety data sheets',exact:true});
+ await expect(importPanel).toContainText('Windows OCR');
+ await importPanel.getByRole('button',{name:'Import SDS Batch',exact:true}).click();
+ await expect(page.getByLabel('Import SDS Batch PDF')).toBeVisible();
+ await page.getByRole('button',{name:'Workers',exact:true}).click();
+ await page.getByRole('button',{name:'SDS Batch Import',exact:true}).click();
+ await expect(page.getByLabel('Import SDS Batch PDF')).toBeVisible();
+ await expect(page.getByText(/OCR runs locally with Windows language recognition/)).toBeVisible();
+});

@@ -5,6 +5,7 @@ import { collection, getDocsFromServer, doc, onSnapshot } from 'firebase/firesto
 import { auth, db, configurationError, signIn, signOutAccount, loadAccount, verifyActiveCompanyAuthorization, call, refreshOfflineAuthorization, listOfflineAuthorizations, clearOfflineAuthorizations, type AccountSession, type CompanyAccess, type OfflineAuthorization } from './auth/firebase';
 import { closeWorkspace,ensureWorkspace,listWorkspaces,selectWorkspace,type WorkspaceDatabase,type WorkspaceEntry } from './data/database';
 import { openAuthoring } from './data/authoring';
+import DemoPlanPicker from './DemoPlanPicker';
 import AuthoringWorkspace from './AuthoringWorkspace';
 import {createWindowsPublication} from './data/publication';
 import {exportWindowsCompanyBackup,restoreWindowsCompanyBackup} from './data/backup';
@@ -110,6 +111,12 @@ function AuthenticatedApp(){
     }
     await observe('company.access',()=>call('setActiveCompany',{companyId:id}),{company:id});await refresh();
   }
+  async function switchDemo(type:'company'|'pro',selectedCompanyId:string|null){
+    setCompany(null);await closeWorkspace();
+    try{await call('switchDemoType',{demoType:type,selectedCompanyId});creatingId.current=null;await refresh();}
+    catch(error){await refresh();throw error;}
+  }
+  const demoPicker=session?.demo&&!offlineLease?<DemoPlanPicker demo={session.demo} companies={session.companies} busy={busy} onApply={(type,selected)=>{if(window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))void action(()=>switchDemo(type,selected));}}/>:null;
   async function create(){creatingId.current??=crypto.randomUUID();await call('createCompany',{companyId:creatingId.current,company:{name:name.trim(),contact_email:email.trim()}}).then(async result=>{await call('setActiveCompany',{companyId:(result as {companyId:string}).companyId});});creatingId.current=null;setName('');await refresh();}
   const controls=<><button disabled={busy||!navigator.onLine} onClick={()=>void beginIdentity(auth.currentUser)}>Refresh access</button><button disabled={busy} onClick={()=>{if(window.dispatchEvent(new Event('hazcom:before-navigation',{cancelable:true})))void action(explicitSignOut);}}>Sign out</button></>;
   if(!session || !company)return <main className="entry"><section className="panel">
@@ -118,7 +125,7 @@ function AuthenticatedApp(){
     {(phase==='restoring'||phase==='authorizing')&&<p role="status">{phase==='restoring'?'Restoring Firebase authentication…':'Checking your account and Company access…'}</p>}
     {phase==='signed-out'?<button disabled={busy||!!configurationError} onClick={()=>void action(signIn)}>Sign in with Google</button>:phase!=='restoring'?<>
       <div className="actions">{controls}</div>
-      {session&&<><p>{session.email}</p><p>{session.entitlement}</p>{offlineLease&&<p>Offline Company names are hidden until the server is available. Authorization expires {new Date(offlineLease.expiresAt).toLocaleString()}.</p>}
+      {session&&<><p>{session.email}</p><p>{session.entitlement}</p>{demoPicker}{offlineLease&&<p>Offline Company names are hidden until the server is available. Authorization expires {new Date(offlineLease.expiresAt).toLocaleString()}.</p>}
         <label>Company<select aria-label="Company" disabled={busy} value="" onChange={e=>{const id=e.currentTarget.value;e.currentTarget.value="";void action(()=>choose(id));}}><option value="">Choose a Company</option>{session.companies.map(c=><option key={c.id} value={c.id}>{c.name} · {c.role}</option>)}</select></label>
         {!session.companies.length&&<p>No active Company memberships yet. Ask your Company administrator for access, or create a Company with an eligible subscription.</p>}
         {session.canCreate&&<form onSubmit={e=>{e.preventDefault();void action(create);}}><h2>Create Company</h2><label>Company name<input required maxLength={300} value={name} onChange={e=>setName(e.target.value)}/></label><label>Contact email<input required type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><button disabled={busy}>Create Company</button></form>}
@@ -127,7 +134,7 @@ function AuthenticatedApp(){
   </section></main>;
   return <div className="shell"><aside><div className="brand"><strong>HazCom Navigator</strong><span>Windows workspace</span></div>
     <label className="company-label">Active Company<select value={company.id} disabled={busy} onChange={e=>{const id=e.currentTarget.value;e.currentTarget.value=company.id;void action(()=>choose(id));}}><option value="">Choose another Company</option>{session.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-    <p>{company.role}</p><p>{session.entitlement}</p><div className="actions">{controls}</div>
+    <p>{company.role}</p><p>{session.entitlement}</p>{demoPicker}<div className="actions">{controls}</div>
   </aside><Workspace key={`${session.uid}/${company.id}/${company.role}/${offlineLease?.state??'online'}`} uid={session.uid} company={company} error={error} offline={offlineLease}/></div>;
 }
 

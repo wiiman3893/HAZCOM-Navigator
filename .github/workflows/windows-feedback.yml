@@ -1,0 +1,29 @@
+name: Windows feedback regression
+on:
+  push:
+    branches: [work/windows-feedback-2026-10-24]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  windows-ui:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install chromium
+      - run: npm run test:authoring:ui
+        env:
+          HAZCOM_TEST_BROWSER: chromium
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: windows-feedback-test-results
+          path: test-results/
